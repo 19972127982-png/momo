@@ -1,13 +1,15 @@
-# EchoPet · 角色行为状态机设计（W2 蓝图）
+# EchoPet · 角色行为状态机设计
 
-> 状态：W1 阶段规划文档（未实现）· 适用：W2 起的对话闭环
+> 状态：✅ **W2 已实现**（commit `c110e52`）· 实现路径：[`packages/state-machine/`](../packages/state-machine/)
 >
 > 目标：把「用户操作 + Agent 内部状态」**翻译成** Hiyori 的 motion / 参数动作，**全程不由人手点按钮触发**。
 >
 > **技术选型（已锁定）：**
-> - 状态机库：**XState v5**（可视化、可单测、作品集加分）
+> - 状态机库：**XState v5**（`^5.32.0`）
 > - LipSync：**不做**（V1 范围外，speaking 状态只播 Tap motion，不驱动嘴部参数）
 > - 输入框：**默认隐藏，点击角色才弹出**（在角色脚下淡入）
+>
+> **实现 / 测试**：23/23 转移路径单测全过，含「零 token / 漏 thinking-end / mid-stream error / apologetic 即时退出」等兜底用例。
 
 ---
 
@@ -80,106 +82,54 @@ V1 阶段，角色动作完全由状态机驱动，触发链路：
 
 ## 4. 状态转移矩阵
 
-```
-                ┌──────────────────────────────────────────────────┐
-                ↓                                                  │
-            ┌──────┐  ui/pet-click       ┌───────────┐            │
-            │ idle ├────────────────────→│ listening │            │
-            └──────┘                     └─────┬─────┘            │
-                                               │                  │
-                                user/send  ┌───┴────────────┐     │
-                                           │                │     │
-                                           ↓                ↓     │
-                                  ┌──────────┐ agent/    ┌──────┐ │
-                                  │ thinking │ thinking/ │ idle │ │
-                                  └────┬─────┘   end     └──────┘ │
-                                       │           ↓              │
-                                       │      ┌──────────┐        │
-                                       │      │ speaking │        │
-                                       │      └─────┬────┘        │
-                          agent/error  │            │             │
-                                       ↓     agent/stream/end     │
-                                  ┌────────────┐    ↓             │
-                                  │ apologetic │ ┌──────┐         │
-                                  └─────┬──────┘ │ done ├─tick/idle
-                                        │tick/idle└──────┘        │
-                                        └─────────────────────────┘
-                          ↑
-                      agent/error 也能从 speaking 跳过来
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+
+    idle --> listening: ui.pet-click
+    idle --> thinking: user.send
+
+    listening --> thinking: user.send
+    listening --> idle: ui.input-blur
+
+    thinking --> speaking: agent.thinking-end
+    thinking --> speaking: agent.stream-chunk*
+    thinking --> done: agent.stream-end*
+    thinking --> apologetic: agent.error
+
+    speaking --> done: agent.stream-end
+    speaking --> apologetic: agent.error
+
+    done --> thinking: user.send
+    done --> listening: ui.pet-click
+
+    apologetic --> idle: after 3s
+    apologetic --> thinking: user.send
+    apologetic --> listening: ui.pet-click
+
+    note right of listening
+      entry: playMotion(FlickUp)
+              showInputBox
+      exit:  hideInputBox
+    end note
+
+    note right of speaking
+      entry: playMotion(Tap)
+    end note
+
+    note right of apologetic
+      entry: playMotion(FlickDown)
+              recordError
+    end note
 ```
 
-XState 5 machine 定义骨架：
+\* 标记的是「兜底转移」：renderer 漏发 `agent.thinking-end` / 零 token 回复也不会卡死。
 
-```ts
-import { setup } from 'xstate'
+**与 W1 规划的差异**：
+- `done` 改成**稳态**（不再 1.5s 后 after-idle），气泡淡出由 UI 层独立 timer 控制（默认问候 10s · 回复 5s）
+- `apologetic` 增加 `user.send → thinking` / `ui.pet-click → listening`，用户重试不需要等 3s after
 
-export const petMachine = setup({
-  types: {
-    context: {} as { lastError: string | null },
-    events: {} as
-      | { type: 'ui.pet-click' }
-      | { type: 'ui.input-blur' }
-      | { type: 'user.send'; text: string }
-      | { type: 'agent.thinking-start' }
-      | { type: 'agent.thinking-end' }
-      | { type: 'agent.stream-chunk'; text: string }
-      | { type: 'agent.stream-end' }
-      | { type: 'agent.error'; error: string }
-  },
-  actions: {
-    playMotion: (_ctx, _ev, { params }: { params: { group: string } }) => {
-      // 由 React 层订阅 actor 时注入实际 model.motion() 调用
-    },
-    showInputBox: () => {},
-    hideInputBox: () => {}
-  }
-}).createMachine({
-  id: 'pet',
-  initial: 'idle',
-  context: { lastError: null },
-  states: {
-    idle: {
-      on: {
-        'ui.pet-click': 'listening',
-        'user.send': 'thinking'
-      }
-    },
-    listening: {
-      entry: [
-        { type: 'playMotion', params: { group: 'FlickUp' } },
-        { type: 'showInputBox' }
-      ],
-      exit: 'hideInputBox',
-      on: {
-        'user.send': 'thinking',
-        'ui.input-blur': 'idle'
-      }
-    },
-    thinking: {
-      on: {
-        'agent.thinking-end': 'speaking',
-        'agent.error': 'apologetic'
-      }
-    },
-    speaking: {
-      entry: { type: 'playMotion', params: { group: 'Tap' } },
-      on: {
-        'agent.stream-end': 'done',
-        'agent.error': 'apologetic'
-        // stream-chunk 不切状态（V1 不做 LipSync，也不需要副作用）
-      }
-    },
-    done: {
-      after: { 1500: 'idle' },
-      on: { 'user.send': 'thinking' }
-    },
-    apologetic: {
-      entry: { type: 'playMotion', params: { group: 'FlickDown' } },
-      after: { 3000: 'idle' }
-    }
-  }
-})
-```
+完整 machine 实现见 [`packages/state-machine/src/machine.ts`](../packages/state-machine/src/machine.ts)。
 
 XState 优势：
 1. `after`(timeout) / `entry`/`exit` actions 内置，不需要手写 ticker
@@ -227,53 +177,60 @@ function PetCanvas() {
 
 ---
 
-## 6. 自动 tick / 超时策略
+## 6. 自动 tick / 超时策略（实际实现）
 
-XState 5 内置 `after` 转移，无需手写 ticker：
+仅 `apologetic` 用 `after`，`done` 改为稳态：
 
 ```ts
-done:        { after: { 1500: 'idle' } }
-apologetic:  { after: { 3000: 'idle' } }
+apologetic:  { after: { 3000: { target: 'idle' } } }
 ```
 
-进入 state 时自动 arm 定时器，离开时自动 cancel。
+`done` 不再自动归位 —— 否则会和 UI 层的「气泡停 5s 后淡出 / 问候 10s 后淡出」timer race。
+要从 `done` 离开，用户主动 `user.send` 或 `ui.pet-click` 即可。
+
+进入 state 时 XState 自动 arm 定时器，离开时自动 cancel。
 
 ---
 
-## 7. 文件 / 模块拆分（W2 实现）
+## 7. 文件 / 模块拆分（W2 实际实现）
 
 ```
-packages/
-  state-machine/                 # 纯 TS（XState），无 UI / Electron 依赖，可单测
-    src/
-      machine.ts                 # petMachine（XState setup + createMachine）
-      types.ts                   # PetState / PetEvent 类型导出
-      index.ts
-    test/
-      machine.test.ts            # 单测：核心转移路径 + @xstate/test 路径覆盖
+packages/state-machine/                  ✅ 纯 TS，无 UI / Electron 依赖，可单测
+  src/
+    machine.ts                           ✅ petMachine（XState setup + createMachine）
+    types.ts                             ✅ PetState / PetEvent / PetMotionGroup / PetContext
+    index.ts                             ✅ barrel
+  test/
+    machine.test.ts                      ✅ 23 vitest 用例覆盖所有转移 + 兜底场景
 
-apps/desktop/src/renderer/src/
-  state/
-    PetActorContext.tsx          # createActorContext(petMachine) + Provider
-    useLive2DBridge.ts           # 订阅 actor 状态 → 调 model.motion
-  components/
-    ChatInput.tsx                # 输入框，dispatch ui.input-blur + user.send
-    ChatBubble.tsx               # 显示 agent stream（基于 actor snapshot）
+apps/desktop/src/
+  shared/ipcTypes.ts                     ✅ main/preload/renderer 共享 AppSettings + PersonalitySnapshot
+  main/
+    llm.ts                               ✅ DeepSeek SSE 流式 + AbortController + 60s 超时
+    configStore.ts                       ✅ safeStorage 加密 + atomicWrite
+    personality.ts                       ✅ W2 mock，W3 替换真实演化引擎
+  renderer/src/
+    App.tsx                              ✅ useMachine + provide actions + click vs drag + 气泡 timer
+    components/ChatInput.tsx             ✅ listening 时 fade-in 淡入 + autofocus
+    components/ChatBubble.tsx            ✅ opacity 切换 fade 显隐
+    components/ConfigDialog.tsx          ✅ 三段式：桌宠 / 性格 / 模型
 ```
+
+**与原规划差异**：renderer 没有单独 `state/` 目录 —— XState 5 用 `useMachine` + `machine.provide({ actions })` 在 App.tsx 顶层组装，IPC 副作用直接闭包，足够清晰，没必要再抽 `PetActorContext` / `useLive2DBridge` 增加心智成本。
 
 ---
 
-## 8. 验收（W2 完成标准）
+## 8. 验收（W2 完成标准 — 全部 ✅）
 
 1. ✅ **点击角色**（区分拖动）→ 输入框在角色脚下淡入 + 角色 FlickUp（抬头看）
 2. ✅ 输入框失焦 / Esc → 输入框淡出 + 状态回 `idle`
 3. ✅ 用户回车发送 → 角色切到「思考」（Idle 慢节奏）
 4. ✅ LLM 首字节到达 → 角色 Tap 一次（开口）+ 进入 `speaking`
-5. ✅ 输出完毕 1.5s 后 → 自动回 `idle`
-6. ✅ API 出错 → FlickDown 一次，3s 后回 `idle`
-7. ✅ 整个流程**不需要手点任何调试按钮**（DebugStateBar 改 dev-only）
-8. ✅ `packages/state-machine` XState machine + 转移路径单测覆盖
-9. ✅ Stately Studio 可视化截图加进 README / 作品集
+5. ✅ 输出完毕 → 进入 `done` 稳态，UI 层 5s 后气泡淡出
+6. ✅ API 出错 → FlickDown 一次，3s 后回 `idle`（或用户主动点击立刻退出）
+7. ✅ 整个流程**不需要手点任何调试按钮**（DebugStateBar 已删）
+8. ✅ `packages/state-machine` XState machine + **23/23** 单测全过
+9. ✅ 状态机 mermaid 图见 §4（GitHub README 原生渲染，不依赖 Stately Studio）
 
 ---
 

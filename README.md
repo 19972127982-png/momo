@@ -1,10 +1,36 @@
 # EchoPet — 情感陪伴桌面宠物
 
-> 基于 EchoMind 多 Agent 框架的 Live2D 桌面宠物。技术栈：**Electron + React + PixiJS v6 + pixi-live2d-display + Live2D Cubism 4 (Hiyori PRO)**。
+> 基于 EchoMind 多 Agent 框架的 Live2D 桌面宠物。技术栈：**Electron + React + PixiJS v6 + pixi-live2d-display + XState v5 + DeepSeek**。
 >
-> 当前里程碑：**W1 — 静态人物 + 5 表情按钮 demo（v1.0）**
+> 当前里程碑：**W2 ✅ — 状态机驱动的对话闭环**（输入文字 → DeepSeek 流式 → 角色全程自动切换 motion）
 
-详细产品规划见 [docs/PRD.md](docs/PRD.md)，架构总览见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，W1 技术方案见 [docs/W1-TECH-PLAN.md](docs/W1-TECH-PLAN.md)。
+详细产品规划见 [docs/PRD.md](docs/PRD.md)，架构总览见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)；技术方案：
+[W1 — Hiyori demo](docs/W1-TECH-PLAN.md) · [W2 — LLM + 状态机](docs/W2-TECH-PLAN.md) · [状态机设计](docs/STATE-MACHINE.md)
+
+---
+
+## 状态机一览
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> listening: ui.pet-click
+    listening --> thinking: user.send
+    listening --> idle: ui.input-blur
+    thinking --> speaking: agent.thinking-end
+    thinking --> speaking: agent.stream-chunk*
+    thinking --> done: agent.stream-end*
+    thinking --> apologetic: agent.error
+    speaking --> done: agent.stream-end
+    speaking --> apologetic: agent.error
+    done --> thinking: user.send
+    done --> listening: ui.pet-click
+    apologetic --> idle: after 3s
+    apologetic --> thinking: user.send
+    apologetic --> listening: ui.pet-click
+```
+
+\* 兜底转移 —— renderer 漏发事件 / 零 token 回复都不会卡死。完整设计见 [docs/STATE-MACHINE.md](docs/STATE-MACHINE.md)。
 
 ---
 
@@ -13,25 +39,37 @@
 ```
 桌宠/
 ├── apps/
-│   └── desktop/                Electron 桌宠主程序（electron-vite + React + TS）
+│   └── desktop/                       Electron 桌宠主程序（electron-vite + React + TS）
 │       ├── src/
-│       │   ├── main/           主进程：透明置顶窗口 + IPC + 鼠标穿透
-│       │   ├── preload/        contextBridge 暴露给 renderer 的最小 IPC
+│       │   ├── main/
+│       │   │   ├── index.ts           IPC 注册 + 拖动 + 单例锁 + safeStorage 启动加载
+│       │   │   ├── window.ts          460×760 透明置顶窗口
+│       │   │   ├── llm.ts             DeepSeek SSE 流式 + AbortController + 60s 超时
+│       │   │   ├── configStore.ts     safeStorage API Key 加密 + settings.json 原子写
+│       │   │   └── personality.ts     性格三维 snapshot（W2 mock，W3 接演化引擎）
+│       │   ├── shared/
+│       │   │   └── ipcTypes.ts        main / preload / renderer 共享类型
+│       │   ├── preload/
+│       │   │   ├── index.ts           暴露 echopet.{pet,chat,config,personality}
+│       │   │   └── index.d.ts
 │       │   └── renderer/
 │       │       └── src/
-│       │           ├── live2d/      Live2D 三件套：bootstrap / loader / expressions
-│       │           ├── components/  PetCanvas / ChatBubble / DebugExpressionBar
-│       │           ├── App.tsx
+│       │           ├── live2d/        bootstrap + modelLoader
+│       │           ├── components/    PetCanvas / ChatBubble / ChatInput / ConfigDialog
+│       │           ├── App.tsx        useMachine + 接全部 IPC + click vs drag
 │       │           └── main.tsx
 │       └── public/
-│           ├── cubism/         Cubism Core for Web (gitignored, setup 脚本下载)
-│           └── live2d/hiyori/  Hiyori PRO 模型 (gitignored, 软链到 hiyori_en/)
-├── hiyori_en/hiyori_pro/       Hiyori PRO 原始素材（Live2D 免费素材协议）
-├── docs/                       PRD / 架构图 / W1 技术方案 / 等
+│           ├── cubism/                Cubism Core (gitignored, setup 脚本下载)
+│           └── live2d/hiyori/         Hiyori PRO 模型 (gitignored, 软链)
+├── packages/
+│   └── state-machine/                 XState v5 状态机包（@echopet/state-machine）
+│       ├── src/                       machine.ts / types.ts / index.ts
+│       └── test/                      vitest 23 用例
+├── docs/                              PRD / 架构 / W1 / W2 / 状态机设计
 ├── scripts/
-│   └── setup-cubism-core.sh    一键拉取 Cubism Core + 软链 Hiyori
+│   └── setup-cubism-core.sh           一键拉取 Cubism Core + 软链 Hiyori
 ├── pnpm-workspace.yaml
-└── package.json                workspace root
+└── package.json                       workspace root
 ```
 
 ---
@@ -84,7 +122,15 @@ pnpm dev
 > ⚠️ **必须在原生 Terminal.app / iTerm 里跑，不要在 Cursor 内置终端里跑。**
 > 详见下文「已知坑」。
 
-成功的话，屏幕右下角会出现一个 400×600 的透明窗口：上面是欢迎气泡，中间是 Hiyori，下面是 5 个表情按钮。
+成功的话，屏幕右下角会出现一个 460×760 的透明窗口：上方气泡 / 中间 Hiyori / 下方输入框（默认隐藏）。
+
+### 4. 首次启动 — 配置 DeepSeek API Key
+
+启动后会自动弹出设置面板，前往 [platform.deepseek.com](https://platform.deepseek.com) 申请一个 `sk-...` key，填入保存即可。
+
+- API Key 通过 Electron `safeStorage` 加密落盘到 macOS Keychain
+- 桌宠名字 / 称呼存在 `~/Library/Application Support/echopet-desktop/settings.json`（明文，原子写）
+- 性格三维进度条目前是 W2 mock，W3 会接真实演化数据
 
 ---
 
@@ -135,28 +181,37 @@ onlyBuiltDependencies:
 ## 常用命令
 
 ```bash
-pnpm dev               # 起 dev server + Electron
-pnpm build             # typecheck + 构建到 out/
-pnpm typecheck         # 仅静态类型检查（无需 Electron）
-pnpm setup:cubism      # 重新拉 Cubism Core + 软链 Hiyori
-pnpm --filter @echopet/desktop lint
+pnpm dev                                       # 起 dev server + Electron
+pnpm build                                     # typecheck + 构建到 out/
+pnpm -r typecheck                              # 全 workspace 静态类型检查
+pnpm --filter @echopet/state-machine test      # 状态机 23 单测
+pnpm setup:cubism                              # 重新拉 Cubism Core + 软链 Hiyori
 ```
 
 ---
 
-## W1 验收检查点
+## 验收检查点
 
-跑 `pnpm dev` 后人肉确认：
+### W1 ✅（已交付，commit `88fc635`）
 
-1. ☐ 右下角出现 400×600 透明窗口（无窗框、无标题栏）
-2. ☐ 窗口透明背景不挡其他应用（鼠标可点穿）
-3. ☐ Hiyori 完整渲染（头、身体、双手都在画布内）
-4. ☐ 上方的欢迎气泡可见，UI 不被 Hiyori 遮挡
-5. ☐ 鼠标悬停在窗口区域 → 鼠标穿透关闭，可以点表情按钮
-6. ☐ 5 个表情按钮按下后 Hiyori 切换 motion（动画播放）
-7. ☐ Cmd+Shift+Q 全局退出生效
+1. ✅ 右下角出现透明窗口（无窗框、无标题栏）
+2. ✅ 窗口透明背景不挡其他应用
+3. ✅ Hiyori 完整渲染（头、身体、双手都在画布内）
+4. ✅ Cmd+Shift+Q 全局退出生效
 
-W2 起接入：DeepSeek + EchoMind 对话主链路 + 人格状态机。
+### W2 ✅（已交付，commit `c110e52`）
+
+1. ✅ 首次启动跳出设置面板，输入 key 后保存且窗口能正常用
+2. ✅ 二次启动直接进入主界面
+3. ✅ 点击角色（< 5px 位移）→ 输入框淡入 + 角色 FlickUp
+4. ✅ 拖动角色（> 5px 位移）→ 窗口跟手，不触发输入框
+5. ✅ Enter 发送 → 角色切 thinking → DeepSeek 流式 → 气泡逐字 + Tap 张嘴
+6. ✅ 完成 5s 后气泡自动淡出
+7. ✅ API Key / 网络错误 → apologetic + FlickDown + 错误气泡（3s 自动恢复，或用户点击立刻退出）
+8. ✅ 设置面板能改名字 / 称呼，性格三维进度条展示（mock）
+9. ✅ 状态机 23/23 单测全过（含兜底场景）
+
+W3 起接入：意图识别 + 多 Agent + 三层记忆 + 性格自适应漂移。
 
 ---
 
