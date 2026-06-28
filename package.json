@@ -1,0 +1,19 @@
+{
+  "name": "echopet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EchoPet — emotional companion desktop pet (monorepo root)",
+  "scripts": {
+    "dev": "pnpm --filter @echopet/desktop dev",
+    "build": "pnpm --filter @echopet/desktop build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "format": "pnpm -r format",
+    "setup:cubism": "bash scripts/setup-cubism-core.sh"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@11.5.2"
+}

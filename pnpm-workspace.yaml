@@ -1,0 +1,15 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 11+ requires explicit approval for package build scripts to run
+# (security feature; without this electron binary won't download)
+allowBuilds:
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+
+onlyBuiltDependencies:
+  - electron
+  - electron-winstaller
+  - esbuild

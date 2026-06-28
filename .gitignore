@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+out/
+build/Release/
+*.tsbuildinfo
+
+# Editor / OS
+.DS_Store
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+*.log.*
+.npm
+.eslintcache
+
+# Live2D / Cubism Core ( SDK 协议非完全开放，不进 git，靠 scripts/setup-cubism-core.sh 重建 )
+apps/desktop/public/cubism/
+apps/desktop/public/live2d/
+# Hiyori 解压目录（工作区根），由用户自行从官方 Sample Package 解压
+/hiyori_en/
+/hiyori*/
+
+# Sensitive (W2+ 起会有 API Key 配置)
+.env
+.env.local
+.env.*.local
+
+# Electron-builder artifacts
+release/
+*.dmg
+*.exe
+*.AppImage
+*.snap
