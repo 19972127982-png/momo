@@ -71,7 +71,14 @@ function App(): React.JSX.Element {
   )
 
   const [snapshot, send] = useMachine(machine)
-  const stateValue = snapshot.value as PetState
+
+  // v2.1 W3：thinking 已升级为 compound state（含 deciding/awaitingApproval/acting/observing 子态），
+  // snapshot.value 在 thinking 时为 { thinking: '<sub>' } 而非字符串。把它平坦化成顶层 PetState
+  // 即可让 W2 写好的 stateValue === 'thinking' 等比较继续工作。
+  const stateValue: PetState =
+    typeof snapshot.value === 'string'
+      ? (snapshot.value as PetState)
+      : (Object.keys(snapshot.value)[0] as PetState)
 
   // 启动时拉所有配置：key 状态 / 应用设置 / 性格快照
   // 设置面板需要这三块数据，没 key 时还会自动弹窗引导填
