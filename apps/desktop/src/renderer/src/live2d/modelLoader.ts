@@ -6,7 +6,7 @@
  *     pivot 会和它打架，造成 motion 切换瞬间视觉漂移。
  *   - 改用 pixi-live2d-display 在 Live2DModel 上原生封装的 anchor（0~1），
  *     它是模型自己的锚点 API，专门处理 Cubism 坐标系。
- *   - 把锚点放在「底部正中 (0.5, 1)」+ position y = canvasHeight。
+ *   - 把锚点放在「底部正中 (0.5, 1)」+ position y ≈ canvasHeight。
  *     这样无论 motion 怎么让身体上下伸缩，「脚」始终钉在画布底部。
  *   - scale 只看画布尺寸和 internalModel.originalWidth/originalHeight
  *     （.moc3 内嵌的设计画布尺寸，永不变化），与 motion 完全解耦。
@@ -14,21 +14,28 @@
  * 其他关键点：
  *   - pixi-live2d-display 0.4 需要 Live2DModel.registerTicker(PIXI.Ticker) 才会自动 update
  *   - PIXI.Application sharedTicker: true，让 render tick 和 model.update tick 同步
+ *
+ * W2 起：playMotion(group) 由状态机的 entry action 驱动，不再由 UI 直调。
+ *        group 字面量来自 hiyori_pro_t11.model3.json#Motions，跟 @echopet/state-machine
+ *        的 PetMotionGroup 类型同源。
  */
 
 import * as PIXI from 'pixi.js'
 import { bootstrapLive2D } from './bootstrap'
-import { STATE_BY_KEY, type StateKey } from './states'
 
 const HIYORI_MODEL_PATH = '/live2d/hiyori/hiyori_pro_t11.model3.json'
 
 const DEBUG_BG = false
 
+// pixi-live2d-display 的 MotionPriority enum: NONE=0 IDLE=1 NORMAL=2 FORCE=3
+// 默认 NORMAL 会被当前 NORMAL motion 阻塞 —— 用 FORCE 强制打断、立即切换。
+const FORCE = 3
+
 export interface PetController {
   app: PIXI.Application
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   model: any
-  playState: (key: StateKey) => void
+  playMotion: (group: string) => void
   destroy: () => void
 }
 
@@ -66,13 +73,11 @@ export async function createPet(canvas: HTMLCanvasElement): Promise<PetControlle
 
   const model = await Live2DModel.from(HIYORI_MODEL_PATH, { autoInteract: false })
 
-  // .moc3 设计画布尺寸 —— 不变量，layout 的唯一基准
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const im = (model as any).internalModel
   const DESIGN_W: number = im?.originalWidth ?? 1000
   const DESIGN_H: number = im?.originalHeight ?? 1000
 
-  // 底部正中锚点：脚钉在画布底部，motion 引起的身体伸缩只往上长，不漂
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(model as any).anchor.set(0.5, 1.0)
   app.stage.addChild(model)
@@ -86,7 +91,7 @@ export async function createPet(canvas: HTMLCanvasElement): Promise<PetControlle
 
     model.scale.set(scale)
     model.x = w / 2
-    model.y = h * 0.94 // 整体上移 6%，给下方留点呼吸 + 避免脚被状态栏挡
+    model.y = h * 0.94 // 整体上移 6%，给下方留呼吸 + 避免脚被状态栏挡
   }
 
   layout()
@@ -95,20 +100,12 @@ export async function createPet(canvas: HTMLCanvasElement): Promise<PetControlle
   ro.observe(canvas)
   window.addEventListener('resize', layout)
 
-  // pixi-live2d-display 的 MotionPriority enum: NONE=0 IDLE=1 NORMAL=2 FORCE=3
-  // 默认 NORMAL 会被当前 NORMAL motion 阻塞 —— 用户连点按钮看起来像「按顺序播」
-  // 实际是后续点击全被 drop。用 FORCE 强制打断、立即切换。
-  const FORCE = 3
-
-  const playState = (key: StateKey): void => {
-    const meta = STATE_BY_KEY[key]
-    if (!meta) return
+  const playMotion = (group: string): void => {
     try {
-      // 第二参数 undefined → pixi-live2d-display 在 group 内随机选一个 motion
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(model as any).motion(meta.group, undefined, FORCE)
+      ;(model as any).motion(group, undefined, FORCE)
     } catch (err) {
-      console.warn(`[pet] motion ${meta.group} failed`, err)
+      console.warn(`[pet] motion ${group} failed`, err)
     }
   }
 
@@ -122,5 +119,5 @@ export async function createPet(canvas: HTMLCanvasElement): Promise<PetControlle
     }
   }
 
-  return { app, model, playState, destroy }
+  return { app, model, playMotion, destroy }
 }

@@ -39,7 +39,7 @@ canvas {
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: 1fr 48px;
   padding: 12px;
   gap: 8px;
   background: transparent;
@@ -49,7 +49,9 @@ canvas {
   position: relative;
   width: 100%;
   min-height: 0;
-  overflow: hidden;
+  /* 气泡 absolute 锚在 stage 内但可向上越界（顶进 pet-root 的 padding 区域），
+     overflow 必须 visible；canvas 自己有 buffer 边界，不会因为 visible 而漏画 */
+  overflow: visible;
   cursor: grab;
 }
 
@@ -115,11 +117,20 @@ canvas {
   border-radius: 4px;
 }
 
+/*
+ * 气泡：绝对定位锚在 stage 内某 Y 处，content 向上扩展。
+ * - top: 32% + translateY(-100%) 把「底边」钉在 stage 顶起 32% 的位置
+ *   （约等于角色头顶上方一点），content 增加 → 高度增长 → top 不变 → 整体向上延伸
+ * - right: 4px 让气泡贴右；max-width 限内容宽度
+ * - pointer-events: none，气泡不挡角色 click / drag
+ */
 .chat-bubble {
-  position: relative;
-  justify-self: end;
-  max-width: 240px;
-  margin-top: 24px;
+  position: absolute;
+  right: 4px;
+  top: 14%;
+  transform: translateY(-100%);
+  max-width: 280px;
+  min-height: 42px;
   background: rgba(255, 255, 255, 0.94);
   color: #2a2a2a;
   padding: 10px 14px;
@@ -130,6 +141,16 @@ canvas {
     0 6px 18px rgba(0, 0, 0, 0.12),
     0 1px 3px rgba(0, 0, 0, 0.08);
   backdrop-filter: blur(8px);
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+  transition:
+    opacity 0.5s ease,
+    transform 0.4s ease;
+}
+
+.chat-bubble--visible {
+  opacity: 1;
 }
 
 .chat-bubble__content {
@@ -140,13 +161,346 @@ canvas {
 .chat-bubble__tail {
   position: absolute;
   bottom: -6px;
-  left: auto;
-  right: 64px;
+  left: 24px;
+  right: auto;
   width: 14px;
   height: 14px;
   background: rgba(255, 255, 255, 0.94);
   transform: rotate(45deg);
   border-radius: 2px;
   box-shadow: 3px 3px 6px rgba(0, 0, 0, 0.05);
+}
+
+.chat-input {
+  display: flex;
+  align-items: center;
+  height: 48px;
+}
+
+.chat-input__field {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.94);
+  color: #2a2a2a;
+  border: 1px solid rgba(170, 68, 102, 0.18);
+  border-radius: 12px;
+  padding: 9px 14px;
+  font-size: 13px;
+  outline: none;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.chat-input--visible .chat-input__field {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.chat-input__field:focus {
+  border-color: rgba(170, 68, 102, 0.55);
+}
+
+.chat-input__field::placeholder {
+  color: rgba(0, 0, 0, 0.35);
+}
+
+/* ===== 设置按钮（齿轮，浮在角色右上角） ===== */
+.settings-fab {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.72);
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  opacity: 0;
+  transition:
+    opacity 0.2s ease,
+    background 0.2s ease;
+  z-index: 5;
+}
+
+.pet-stage:hover .settings-fab,
+.settings-fab:focus {
+  opacity: 1;
+}
+
+.settings-fab:hover {
+  background: rgba(255, 255, 255, 0.95);
+  color: rgba(170, 68, 102, 0.85);
+}
+
+/* ===== ConfigDialog 配置弹窗 ===== */
+.config-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 100;
+}
+
+.config-mask--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.config-dialog {
+  width: 100%;
+  max-width: 360px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 14px;
+  padding: 18px 18px 16px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+  color: #2a2a2a;
+  scrollbar-width: thin;
+}
+
+.config-dialog__title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.config-dialog__section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.config-dialog__section:first-of-type {
+  margin-top: 6px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.config-dialog__section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.7);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.config-dialog__section-tag {
+  font-size: 10px;
+  font-weight: 400;
+  color: rgba(170, 68, 102, 0.85);
+  background: rgba(170, 68, 102, 0.08);
+  padding: 2px 7px;
+  border-radius: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.config-dialog__field {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.config-dialog__label {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.config-dialog__hint {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.55);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.config-dialog__hint code,
+.config-dialog__warn code {
+  background: rgba(170, 68, 102, 0.08);
+  color: rgba(170, 68, 102, 0.85);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.config-dialog__warn {
+  font-size: 12px;
+  color: rgba(170, 68, 102, 0.95);
+  background: rgba(255, 235, 240, 0.7);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.config-dialog__input {
+  width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 9px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: rgba(248, 248, 248, 0.9);
+  outline: none;
+  transition: border-color 0.18s ease;
+  box-sizing: border-box;
+}
+
+.config-dialog__input--mono {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.config-dialog__input:focus {
+  border-color: rgba(170, 68, 102, 0.6);
+}
+
+.config-dialog__inline-action {
+  background: none;
+  border: none;
+  color: rgba(170, 68, 102, 0.85);
+  font-size: 11px;
+  padding: 4px 0;
+  margin-left: 66px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.config-dialog__inline-action:hover:not(:disabled) {
+  color: rgba(170, 68, 102, 1);
+}
+
+.config-dialog__inline-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.config-dialog__error {
+  font-size: 12px;
+  color: #c0392b;
+  margin-top: 10px;
+}
+
+.config-dialog__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+/* ===== 性格三维进度条 ===== */
+.personality__row {
+  display: grid;
+  grid-template-columns: 36px 1fr 32px;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.personality__label {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.7);
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.personality__bar {
+  grid-column: 2;
+  grid-row: 1;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.personality__bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff8aa5 0%, #aa4466 100%);
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+
+.personality__value {
+  grid-column: 3;
+  grid-row: 1;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.5);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.personality__hint {
+  grid-column: 2 / 4;
+  grid-row: 2;
+  font-size: 10px;
+  color: rgba(0, 0, 0, 0.35);
+}
+
+.personality__note {
+  margin-top: 8px;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.4);
+  line-height: 1.5;
+  font-style: italic;
+}
+
+.config-dialog__btn {
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.config-dialog__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.config-dialog__btn--ghost {
+  background: rgba(0, 0, 0, 0.04);
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.config-dialog__btn--ghost:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.config-dialog__btn--primary {
+  background: linear-gradient(135deg, #ff8aa5 0%, #aa4466 100%);
+  color: #fff;
+}
+
+.config-dialog__btn--primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ff7595 0%, #983d5b 100%);
 }
 

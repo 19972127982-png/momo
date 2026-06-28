@@ -5,8 +5,8 @@ const isDev = !!process.env.ELECTRON_RENDERER_URL
 
 export function createPetWindow(): BrowserWindow {
   const { workAreaSize } = screen.getPrimaryDisplay()
-  const width = 400
-  const height = 600
+  const width = 460
+  const height = 760
 
   const win = new BrowserWindow({
     width,

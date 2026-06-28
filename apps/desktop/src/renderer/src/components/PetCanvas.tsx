@@ -1,9 +1,8 @@
 import { useEffect, useImperativeHandle, useRef, forwardRef } from 'react'
 import { createPet, type PetController } from '../live2d/modelLoader'
-import type { StateKey } from '../live2d/states'
 
 export interface PetCanvasHandle {
-  playState: (key: StateKey) => void
+  playMotion: (group: string) => void
 }
 
 interface PetCanvasProps {
@@ -21,8 +20,8 @@ const PetCanvas = forwardRef<PetCanvasHandle, PetCanvasProps>(function PetCanvas
   useImperativeHandle(
     ref,
     () => ({
-      playState: (key) => {
-        controllerRef.current?.playState(key)
+      playMotion: (group) => {
+        controllerRef.current?.playMotion(group)
       }
     }),
     []
