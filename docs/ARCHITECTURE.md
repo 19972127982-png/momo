@@ -1,18 +1,20 @@
-# EchoPet 架构总览
+# EchoPet 架构总览 · v2.0
 
 <p align="center">
   <a href="https://www.figma.com/board/FOXNk5qPRm7BZ98dp7YwF7">
-    <img src="./img/architecture-overview.svg" alt="EchoPet v1.1 架构总览图" width="900"/>
+    <img src="./img/architecture-overview.svg" alt="EchoPet v1.1 架构总览图（v2.0 升级图见 §9 §10）" width="900"/>
   </a>
   <br/>
-  <em>同步主链路（实线） · 双异步反馈（点线） · 跨轮反馈（反向粗线）</em>
+  <em>v1.1 同步主链路（实线） · 双异步反馈（点线） · 跨轮反馈 — v2.0 在 §9/§10 加三端拓扑 + MCP host 拓扑 mermaid 图</em>
   <br/>
   <strong><a href="https://www.figma.com/board/FOXNk5qPRm7BZ98dp7YwF7">→ 在 FigJam 中打开（可编辑 · 可导出 PNG / SVG）</a></strong>
 </p>
 
-> 配套文档：[PRD.md](PRD.md)
+> 配套文档：[PRD.md](PRD.md)（v2.0）
 >
-> 本文是 W4 作品集 README 的素材源。架构总览图用 Figma 出 SVG，其余结构图、时序图、存储拓扑图均用 Mermaid，可直接被 GitHub / Cursor 渲染。
+> 本文是作品集 README 的素材源。v1.1 架构总览图（顶图）用 Figma 出 SVG，**v2.0 新增的三端拓扑图 (§9) 和 MCP host 拓扑图 (§10) 直接用 mermaid GitHub 原生渲染**，其余结构图、时序图、存储拓扑均同。
+>
+> **v2.0 新增章节**：§8 v1.0→v1.1→v2.0 升级摘要 · §9 三端部署拓扑 · §10 MCP host + 权限闸 拓扑
 
 ---
 
@@ -259,21 +261,148 @@ flowchart LR
 
 ---
 
-## 8. v1.0 → v1.1 升级摘要
+## 8. v1.0 → v1.1 → v2.0 升级摘要
 
-| 维度 | v1.0 | v1.1 |
-|---|---|---|
-| 架构模块数 | 4 大模块 | 4 + 1 双反馈通路 |
-| 人格设计 | 单层静态 | 双层（底色 + 动态漂移） |
-| 数据表 | 5 张 | 7 张（新增 pet_personality + evolution_log） |
-| 工程取舍点 | 4 个 | 5 个（新增双层 vs 纯漂移） |
-| Demo 视频场景 | 5 个 | 6 个（新增状态面板展示） |
-| 灵感来源 | EchoMind | EchoMind + ai-pet（吸纳性格自适应） |
+| 维度 | v1.0 | v1.1 | **v2.0** |
+|---|---|---|---|
+| 架构模块数 | 4 大 | 4 + 1 双反馈通路 | **4 + 1 + 工具系统 (MCP)** |
+| Agent 编排 | 三陪伴 | 三陪伴 | **双族：陪伴族 + 实用族** |
+| 人格设计 | 单层 | 双层（底色 + 漂移） | 双层 — 保留 |
+| 数据 / 工具 | 本地 | 本地 | 本地 + **MCP 工具调用 + 权限审批流** |
+| 端 | Electron 桌面 | Electron 桌面 | **三端：Electron + Web PWA + Mobile 路线图** |
+| Backend | 无 | 无 | **Supabase + Vercel（仅服务 Web 端，桌面永不上云）** |
+| 数据表 | 5 | 7 | 桌面 11 (+ skills + mcp_servers + permission_grants + tool_call_logs) ；Web 独立 Supabase schema |
+| 工程取舍点 | 4 | 5（+ 双层人格） | **6（+ MCP vs FC vs LangChain）** |
+| Demo 视频 | 5 场景 | 6 场景 | **3 段：V1 6 场景 + V1.5 4 场景 + V2 4 场景** |
+| 周期 | 4 周 | 4 周 | **9 周（V1 4 + V1.5 2 + V2 3）** |
+| 灵感来源 | EchoMind | EchoMind + ai-pet | EchoMind + ai-pet + **MCP 生态** |
 
 ---
 
-## 9. 关联文档
+## 9. v2.0 三端部署拓扑
 
-- [PRD.md](PRD.md) — 产品需求文档（完整）
+```mermaid
+flowchart TB
+    subgraph Desktop ["Electron 桌面端 · 完整功能 · 隐私第一"]
+        direction TB
+        DesktopUI[React + PixiJS v6<br/>+ Live2D Hiyori]
+        DesktopMain[Main Process<br/>━━━━━━━━<br/>双族 Agent 编排<br/>MCP host（完整）<br/>权限闸（所有 scope）]
+        DesktopDB[(SQLite + ChromaDB<br/>+ OS Keychain)]
+        DesktopMCP[(本地 MCP servers<br/>filesystem · git<br/>brave-search · 自建 system)]
+        DesktopUI <==> DesktopMain
+        DesktopMain <==> DesktopDB
+        DesktopMain <==> DesktopMCP
+    end
+
+    subgraph Web ["Web / PWA · 在线试玩 · 独立账号"]
+        direction TB
+        WebUI[React + PixiJS v7 ESM<br/>+ Service Worker]
+        VercelAPI[Vercel API Routes<br/>━━━━━━━━<br/>LLM 桥接<br/>BYOK / 平台配额]
+        Supabase[(Supabase<br/>━━━━━━━━<br/>Postgres + pgvector<br/>Auth + RLS<br/>Storage + Vault KMS)]
+        WebMCP[(裁剪 MCP servers<br/>brave-search · fetch<br/>network scope only)]
+        WebUI <==> VercelAPI
+        VercelAPI <==> Supabase
+        VercelAPI <==> WebMCP
+    end
+
+    subgraph Shared ["packages/ · 跨端共享 monorepo"]
+        direction TB
+        StateMachine[state-machine<br/>XState v5 ✅ W2]
+        AgentCore[agent-core<br/>路由 · 编排 · 记忆接口<br/>V1.5]
+        UIComp[ui-components<br/>ChatBubble · ConfigDialog<br/>V2]
+        MCPShared[mcp-host-shared<br/>schema + bridge<br/>V1.5]
+    end
+
+    Desktop -.复用.- Shared
+    Web -.复用.- Shared
+
+    User1((桌面用户)):::userClass ==> Desktop
+    User2((试玩用户)):::userClass ==> Web
+    Mobile((移动用户 · V3)):::userClass -.PWA.- Web
+
+    Desktop x--x|"零数据流通"| Web
+
+    classDef userClass fill:#ffeaa7,stroke:#fdcb6e
+```
+
+**关键工程原则**：
+
+- **桌面 ↔ Web 零数据流通**：图里 `x--x` 是断开线。桌面端代码里**不存在**任何 Supabase URL / fetch endpoint，从根上消除上传可能
+- **复用而非镜像**：四个共享包同源，但桌面 / Web 各自的 host config / capability 配置完全独立
+- **三端责任划分**：桌面 = 长期使用 + 完整工具；Web = 5 分钟体验试玩；Mobile = V3 决策
+
+---
+
+## 10. v2.0 MCP host + 权限闸 拓扑
+
+```mermaid
+flowchart TB
+    User((用户))
+    LLM(["LLM<br/>DeepSeek-V3"])
+
+    subgraph Renderer ["Renderer (React)"]
+        ChatUI[Chat UI]
+        PermToast[Permission Toast<br/>━━━━━━━━<br/>一次 / 会话 / 永久 / 拒绝]
+        Settings[Settings 三 tab<br/>━━━━━━━━<br/>Skills · Tools · Permissions]
+    end
+
+    subgraph Main ["Main Process"]
+        Orchestrator[双族编排器]
+        PermGate[Permission Gate<br/>━━━━━━━━<br/>scope · 白名单<br/>查 grants 表]
+        MCPHost[MCP Host<br/>━━━━━━━━<br/>@modelcontextprotocol/sdk-node<br/>stdio + SSE transport<br/>schema cache · bridge to FC]
+        ToolLogger[Tool Call Logger]
+    end
+
+    subgraph Servers ["MCP servers (子进程 / 远程)"]
+        FS[filesystem MCP<br/>npx -y @mcp/server-filesystem]
+        Git[git MCP<br/>npx -y mcp-server-git]
+        Brave[brave-search MCP<br/>HTTPS SSE]
+        SysSrv[自建 system MCP<br/>剪贴板 · 通知]
+    end
+
+    subgraph DB ["SQLite"]
+        Grants[(permission_grants)]
+        Logs[(tool_call_logs)]
+        ServerCfg[(mcp_servers)]
+    end
+
+    User ==> ChatUI
+    ChatUI ==> Orchestrator
+    Orchestrator ==>|"实用族 tool_call"| PermGate
+    PermGate -.查询.- Grants
+    PermGate ==>|"未授权"| PermToast
+    PermToast ==>|"用户审批"| PermGate
+    PermGate ==>|"批准 + 写永久 grant"| Grants
+    PermGate ==>|"放行"| MCPHost
+    MCPHost <==> FS
+    MCPHost <==> Git
+    MCPHost <==> Brave
+    MCPHost <==> SysSrv
+    MCPHost -.- ServerCfg
+    MCPHost ==>|"tool_result"| LLM
+    LLM ==>|"summary"| ChatUI
+    MCPHost -.写.- ToolLogger
+    PermGate -.写.- ToolLogger
+    ToolLogger -.- Logs
+    Settings -.读/撤销.- Grants
+    Settings -.读.- Logs
+    Settings -.增删启用.- ServerCfg
+```
+
+**关键工程细节**：
+
+- **PermGate 是不可绕过的**：所有 `tool_call` 必经过它；命中 grants 则无感放行（不切状态机），未命中则切 `awaiting-approval` sub-state 弹 toast
+- **MCP Host 是 LLM ↔ MCP 的桥**：把 MCP 的 `tools/call` schema 翻译成 DeepSeek function calling 格式，把 `tool_result` 包装为 `role=tool` 消息回喂 LLM
+- **审计端到端**：每次 tool_call 不论成功失败都写 `tool_call_logs` 表，可在 Permissions tab 看 / 导出 JSON
+- **设置三 tab 闭环**：Skills 启用某个包 → 自动写 `mcp_servers` enabled；Tools tab 显示 server 实时 health；Permissions tab 撤销 grant + 看审计
+
+---
+
+## 11. 关联文档
+
+- [PRD.md](PRD.md) — 产品需求文档（v2.0 完整）
+- [STATE-MACHINE.md](STATE-MACHINE.md) — 状态机设计（W2 已实现，V1.5 将加 acting/observing）
+- [W1-TECH-PLAN.md](W1-TECH-PLAN.md) — W1 Hiyori demo 实现
+- [W2-TECH-PLAN.md](W2-TECH-PLAN.md) — W2 状态机 + DeepSeek 实现
 - ASSETS.md (W1 创建) — 第三方资产授权清单
-- README.md (W4 创建) — 作品集主文档
+- README.md — 作品集主文档（W4 / W6 / W9 各迭代一版）
