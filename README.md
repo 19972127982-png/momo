@@ -2,10 +2,10 @@
 
 > 基于 EchoMind 多 Agent 框架的 Live2D 桌面宠物。技术栈：**Electron + React + PixiJS v6 + pixi-live2d-display + XState v5 + DeepSeek**。
 >
-> 当前里程碑：**W2 ✅ — 状态机驱动的对话闭环**（输入文字 → DeepSeek 流式 → 角色全程自动切换 motion）
+> 当前里程碑：**W4 ✅ — 实用 Agent 族 + 权限闸 + 审批 UX + Skills**（意图路由 → FileAgent/SystemAgent 调工具 → write/exec 弹审批 toast → 永久授权/撤销/审计）
 
 详细产品规划见 [docs/PRD.md](docs/PRD.md)，架构总览见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)；技术方案：
-[W1 — Hiyori demo](docs/W1-TECH-PLAN.md) · [W2 — LLM + 状态机](docs/W2-TECH-PLAN.md) · [状态机设计](docs/STATE-MACHINE.md)
+[W1 — Hiyori demo](docs/W1-TECH-PLAN.md) · [W2 — LLM + 状态机](docs/W2-TECH-PLAN.md) · [W3 — 意图路由 + 多 Agent + 记忆](docs/W3-TECH-PLAN.md) · [W4 — 权限闸 + 审批 + Skills](docs/W4-TECH-PLAN.md) · [状态机设计](docs/STATE-MACHINE.md)
 
 ---
 

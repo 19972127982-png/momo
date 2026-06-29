@@ -1,6 +1,8 @@
 # W4 技术方案 · 实用 Agent 族完整闭环 + 权限审批
 
-> 状态：规划中 · 前置：W1 ✅ W2 ✅ W3 ✅（D1–D6 + 文件喂养加餐）· 周期：~7 天
+> 状态：✅ 已完成（D1–D7）· 前置：W1 ✅ W2 ✅ W3 ✅（D1–D6 + 文件喂养加餐）· 周期：~7 天
+>
+> 实际落地与计划的主要偏差见文末 **§12 实施收尾**（DevAgent 推迟、SystemAgent 改进程内 server、Skills 为「文件管家/系统助手/裸装」）。
 >
 > 目标：把 W3 副线「FileAgent read-only + 自动放行」升级为**完整的实用 Agent 族 + 统一权限闸 + 审批 UX**：
 > - **权限闸**：scope 四档（read/write/exec/network）× 授权三档（一次/会话/永久），所有 `write`/`exec`/`network` 默认弹审批
@@ -319,3 +321,46 @@ tool_call_logs(id, ts, agent_name, server_id, tool_name, args_summary,
 ## 11. W4 → W5 衔接
 
 W4 完成后，权限闸 + 审批 + 多 Agent + Skills 齐全，**实用族闭环成立**。W5 在此之上加评测（LLM-as-Judge 用 `tool_call_logs` 作输入）、Monitor 看板、状态可视化、Agent 自动降权（基于审计日志命中率），并出 V1+V1.5 联合 demo 视频 + macOS 安装包。
+
+---
+
+## 12. 实施收尾（实际落地与偏差）
+
+### 12.1 与计划的偏差
+
+| 计划 | 实际 | 原因 |
+|---|---|---|
+| DevAgent（`mcp-server-git`） | **推迟** | 依赖 `uvx`/Python 运行时，作品集价值有限；二级路由 + serverRegistry 已留好扩展位，后续加回成本低 |
+| SystemAgent = 自建独立 stdio MCP server（`packages/system-mcp-server`） | **改为 mcp-host 进程内（local）server** | Electron 剪贴板/通知只能在主进程调，独立子进程拿不到；改用 `host.registerLocal()` 注入 handler，mcp-host 仍不依赖 Electron |
+| Skills 3 包：开发者助手 / 文件管家 / 裸装 | **文件管家 / 系统助手 / 裸装** | DevAgent 推迟 → 开发者助手去掉；SystemAgent 落地 → 新增「系统助手」 |
+| `skills` server id：`filesystem-desktop` / `git` | 统一对齐 serverRegistry 的 `filesystem` / `system` | 避免 Skill→server 解析对不上 |
+
+### 12.2 关键实现位置
+
+- 进程内 server：`packages/mcp-host/src/host.ts`（`registerLocal/unregister/listServers`）+ `types.ts`（`LocalToolDef/LocalServerConfig`）
+- 系统工具：`apps/desktop/src/main/mcp/systemTools.ts`（剪贴板读写 + 通知，Electron API）
+- server 注册表：`apps/desktop/src/main/mcp/serverRegistry.ts`（`stdio | local` 两类）
+- Skills 门面：`apps/desktop/src/main/skills/skillManager.ts`（启用态门控 server + 注入 promptAddon）
+- 设置面板：`components/ConfigDialog.tsx`（基础/技能/工具/权限 四 tab）+ `components/settings/{Skills,Tools,Permissions}Panel.tsx`
+- 迁移：`db/migrations.ts` v4（清理旧 `dev` Skill + 一次性默认开「文件管家」）
+
+### 12.3 E2E 自测清单（在 dev 运行的桌宠里手测）
+
+> 工程侧已通过：全仓 `pnpm -r typecheck` + `pnpm -r test`（agent-core 221 + mcp-host 20 + state-machine 39）+ 各改动文件 lint 干净。以下为需在 UI 里点的回归项：
+
+1. ☐ **read 放行**：「列一下我桌面有什么」→ 不弹审批，直接报清单
+2. ☐ **write 审批**：「在桌面新建一个 note.txt 写点东西」→ 弹审批 toast，点「本次」后真的落盘
+3. ☐ **永久授权持久化**：同操作点「永久」→ 重启后再做同类操作不再弹
+4. ☐ **拒绝/超时**：弹审批后点「拒绝」（或 30s 不点）→ 桌宠说「先不动它」
+5. ☐ **剪贴板读**：「看看我剪贴板里是什么」→ read，直接读出（不弹审批）
+6. ☐ **剪贴板写 + 通知**：「把『hello』复制到剪贴板」「弹个通知提醒我喝水」→ write，弹审批，确认后生效
+7. ☐ **Skills 门控**：设置→技能 关掉「文件管家」→ 再让它整理文件 → 降级为陪伴（不碰文件）
+8. ☐ **Tools tab**：显示 filesystem（子进程）/ system（进程内）健康 + 工具数；filesystem 首次失败可「重启」
+9. ☐ **Permissions tab**：永久授权可「撤销」/「全部撤销」；撤销后同操作重新弹审批
+10. ☐ **审计 + 导出**：调用审计按 Agent 筛选；「导出 JSON」保存成功
+
+### 12.4 验收状态对照（§7）
+
+- 权限闸 / 审批回环 / 二级路由 / Skills 门控 / 三 tab IPC：**代码 + 单测就绪**，行为待 §12.3 手测确认
+- 第 9 项（DevAgent git）：随 DevAgent 推迟，不在本期验收
+- 双仓推送：按需执行（用户确认后 `git push` origin + woa）

@@ -994,11 +994,11 @@ V3 视优先级决定是否升级 React Native：
 | **W2** | 状态机 + DeepSeek 流式 + 设置雏形 | XState v5 6 状态 23 单测 + SSE 流式 + safeStorage 加密 + 三段式设置面板 | ✅ |
 | **W3** | **单 CompanionAgent + 三层记忆 + 性格演化（主线）+ MCP host 起骨架（副线）** | `packages/agent-core` + `packages/mcp-host` + CompanionAgent + 双层 prompt + better-sqlite3 三层记忆 + ChromaDB sidecar + bge-small-zh embedding + 摘要 Agent + PersonalityEngine 真实接入（`pet_personality` + `evolution_log`）+ 状态机扩展 `acting/observing/awaiting-approval` + FileAgent read-only E2E（「列 Desktop」demo）+ 两级路由一级 | 🟡 进行中 |
 
-### 9.2 V1.5（W4）· 实用 Agent 族完整闭环 + 权限审批
+### 9.2 V1.5（W4 ✅）· 实用 Agent 族完整闭环 + 权限审批
 
 | 周 | 目标 | 交付物 |
 |---|---|---|
-| **W4** | FileAgent 完整 + DevAgent + WebAgent + 权限闸 + 审批 UX | FileAgent `write` scope + SystemAgent（自建 stdio MCP server）+ DevAgent (`mcp-server-git`) + WebAgent (`brave-search`)+ 权限闸（`permission_grants` + `tool_call_logs` 表）+ 审批 toast UX + 桌宠询问态 motion + Skills 框架（4 内置包）+ 设置 Skills/Tools/Permissions 三 tab + 两级路由二级（实用族选 Agent）+ ReAct loop |
+| **W4 ✅** | FileAgent 完整 + SystemAgent + 权限闸 + 审批 UX | FileAgent `write` scope + SystemAgent（剪贴板/通知，mcp-host **进程内 local server**）+ 权限闸（`permission_grants` + `tool_call_logs` 表）+ 审批 toast UX + 桌宠询问态 + Skills 框架（**文件管家 / 系统助手 / 裸装**）+ 设置 **基础/技能/工具/权限** 四 tab（grants 撤销 + 审计筛选/导出）+ 两级路由二级（实用族选 Agent）+ ReAct loop。**DevAgent（`mcp-server-git`）/ WebAgent（`brave-search`）推迟**——见 [W4-TECH-PLAN §12](W4-TECH-PLAN.md) |
 
 ### 9.3 V1 作品集交付 + V1.5 作品集合并（W5）
 
