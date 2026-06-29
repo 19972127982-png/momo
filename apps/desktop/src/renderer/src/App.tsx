@@ -5,6 +5,7 @@ import PetCanvas, { type PetCanvasHandle } from './components/PetCanvas'
 import ChatBubble from './components/ChatBubble'
 import ChatInput from './components/ChatInput'
 import ConfigDialog from './components/ConfigDialog'
+import ApprovalToast, { type ApprovalRequest, type GrantGrade } from './components/ApprovalToast'
 import { DEFAULT_SETTINGS, type AppSettings, type PersonalitySnapshot } from '../../shared/ipcTypes'
 
 /** 默认气泡文案（speaking/done/apologetic 优先用 context 数据，这里只是 fallback） */
@@ -45,6 +46,8 @@ function App(): React.JSX.Element {
   const [toolStatus, setToolStatus] = useState<string | null>(null)
   // 拖文件总结：拖拽悬停态（显示「松手丢给我」提示）
   const [dragActive, setDragActive] = useState(false)
+  // W4 D3：待用户审批的权限请求（非空时弹 toast + 进询问态）
+  const [approval, setApproval] = useState<ApprovalRequest | null>(null)
 
   // 第一个 LLM chunk 到达时要先 emit thinking-end，再 emit chunk —— 用 ref 标记本轮
   const firstChunkRef = useRef(true)
@@ -115,6 +118,7 @@ function App(): React.JSX.Element {
 
     const offChunk = ipc.chat.onChunk((text) => {
       setToolStatus(null) // 最终答复开始 → 清掉工具状态提示
+      setApproval(null) // 已进入回答阶段 → 清掉残留审批 toast（含主进程超时兜底后）
       if (firstChunkRef.current) {
         firstChunkRef.current = false
         send({ type: 'agent.thinking-end' })
@@ -123,14 +127,20 @@ function App(): React.JSX.Element {
     })
     const offEnd = ipc.chat.onEnd(() => {
       setToolStatus(null)
+      setApproval(null)
       send({ type: 'agent.stream-end' })
     })
     const offError = ipc.chat.onError((err) => {
       setToolStatus(null)
+      setApproval(null)
       send({ type: 'agent.error', error: err })
     })
     const offTool = ipc.chat.onTool((label) => {
       setToolStatus(label)
+    })
+    const offPerm = ipc.permission.onRequest((req) => {
+      setApproval(req)
+      setBubbleVisible(true)
     })
 
     return () => {
@@ -138,8 +148,17 @@ function App(): React.JSX.Element {
       offEnd()
       offError()
       offTool()
+      offPerm()
     }
   }, [send])
+
+  // 审批回应：把选择回传主进程，并关掉 toast
+  const handleApproval = useCallback((grade: GrantGrade) => {
+    setApproval((cur) => {
+      if (cur) window.echopet?.permission.respond(cur.reqId, grade)
+      return null
+    })
+  }, [])
 
   // 拖文件/图片喂给桌宠 → 总结。复用 chat 流式通道：发合成 user.send 进 thinking，
   // 再调 file.summarize，结果走 chat:chunk/end/error 推进状态机（与对话一致）。
@@ -307,6 +326,12 @@ function App(): React.JSX.Element {
   // 状态 → 气泡文案
   const bubbleText = useMemo(() => {
     if (loadError) return loadError
+    if (approval) {
+      const verb = { read: '看看', write: '动', exec: '执行', network: '联网查' }[approval.scope]
+      return approval.target
+        ? `我想帮你${verb}「${approval.target}」，可以吗？`
+        : `我想用一下工具（${approval.toolName}），可以吗？`
+    }
     if (dragActive && stateValue !== 'thinking' && stateValue !== 'speaking') {
       return '把文件或图片松手丢给我，我帮你看看里面写了啥~'
     }
@@ -321,6 +346,7 @@ function App(): React.JSX.Element {
     return FALLBACK_TEXT[stateValue]
   }, [
     loadError,
+    approval,
     dragActive,
     stateValue,
     snapshot.context.streamText,
@@ -332,6 +358,7 @@ function App(): React.JSX.Element {
     (text: string) => {
       firstChunkRef.current = true
       setToolStatus(null)
+      setApproval(null)
       send({ type: 'user.send', text })
       window.echopet?.chat.send(text).catch(() => {
         send({ type: 'agent.error', error: '调用失败，请检查网络或 API Key' })
@@ -375,6 +402,8 @@ function App(): React.JSX.Element {
     <div className="pet-root">
       <div className={`pet-stage${dragActive ? ' drag-active' : ''}`}>
         <ChatBubble text={bubbleText} visible={bubbleVisible} />
+
+        {approval && <ApprovalToast request={approval} onRespond={handleApproval} />}
 
         {!petReady && !loadError && (
           <div className="pet-loading">

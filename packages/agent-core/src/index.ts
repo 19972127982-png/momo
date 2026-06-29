@@ -103,8 +103,12 @@ export {
 
 export {
   classifyIntentByKeywords,
+  hasWeakTaskHint,
   KeywordIntentRouter,
+  HybridIntentRouter,
   type KeywordIntentResult,
+  type LlmIntentClassifier,
+  type HybridRouterOptions,
 } from "./intent-router";
 
 export { FileAgent, type FileAgentOptions } from "./file-agent";

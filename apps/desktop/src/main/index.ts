@@ -10,21 +10,26 @@ import { maybeExtractProfile } from './memory/profileExtractor'
 import { maybeSummarize } from './memory/summarizer'
 import { maybeEvolvePersonality } from './memory/personalityEngine'
 import { createDeepSeekFcClient } from './fileAgentClient'
+import { createLlmIntentClassifier } from './intentClassifier'
 import { getMcpHost, closeMcpHost, desktopDir } from './mcp/bootstrap'
+import { PermissionGate, extractTarget } from './permission/gate'
+import { ToolLogger } from './permission/toolLogger'
+import { approvalBridge } from './permission/approvalBridge'
 import { summarizeFile } from './fileSummary'
 import { closeOcr } from './fileSummary/ocr'
 import type { AppSettings } from '../shared/ipcTypes'
 import {
   CompanionAgent,
   FileAgent,
-  KeywordIntentRouter,
+  HybridIntentRouter,
   DefaultPromptBuilder,
   deriveGrowthStage,
   summarizeUserProfile,
   namespaceToolName,
   type Agent,
   type AgentRunContext,
-  type ToolResolution
+  type ToolResolution,
+  type GrantGrade
 } from '@echopet/agent-core'
 
 let petWindow: BrowserWindow | null = null
@@ -47,6 +52,9 @@ let chatAbort: AbortController | null = null
 
 // W3 D3：SQLite 三层记忆（启动时 init）
 let memoryStore: SqliteMemoryStore | null = null
+// W4 D2：权限闸 + 工具调用审计（启动时 init，与 db 同生命周期）
+let permissionGate: PermissionGate | null = null
+let toolLogger: ToolLogger | null = null
 // 距上次成功画像提取的轮数 —— 触发「每 5 轮兜底」用；进程级计数，重启归零可接受
 let turnsSinceProfileExtraction = 0
 
@@ -58,8 +66,11 @@ const companionAgent = new CompanionAgent({
   maxTokens: 256
 })
 
-// W3 D6：一级路由（陪伴 vs 实用）+ 工作族 function-calling 客户端
-const intentRouter = new KeywordIntentRouter()
+// W3 D6 / W4：一级路由（陪伴 vs 实用）—— 关键词优先 + LLM zero-shot 兜底
+// （关键词判 companion 且带弱任务信号时才触发兜底，纯闲聊零额外延迟）
+const intentRouter = new HybridIntentRouter({
+  classifier: createLlmIntentClassifier(() => cachedApiKey)
+})
 const fcClient = createDeepSeekFcClient(() => cachedApiKey)
 
 /** tool-call → 给 UI 的中文状态提示 */
@@ -87,7 +98,11 @@ app.whenReady().then(async () => {
   cachedApiKey = await loadApiKey()
 
   // W3 D3：打开 SQLite + 跑迁移 + 播种单行表
-  memoryStore = new SqliteMemoryStore(getDb())
+  const db = getDb()
+  memoryStore = new SqliteMemoryStore(db)
+  // W4 D2：权限闸 + 审计（载入已有永久授权）
+  permissionGate = new PermissionGate(db)
+  toolLogger = new ToolLogger(db)
 
   petWindow = createPetWindow()
 
@@ -145,7 +160,6 @@ app.whenReady().then(async () => {
 
     // 一级路由：陪伴 vs 实用
     const route = await intentRouter.route(userInput, { workingMemory: [], signal: ac.signal })
-
     // 实用模式：懒启动 MCP host。拿不到就降级走陪伴，保证总有回应。
     let mcpHost: Awaited<ReturnType<typeof getMcpHost>> = null
     if (route.mode === 'utility') {
@@ -227,11 +241,65 @@ app.whenReady().then(async () => {
             event.sender.send('chat:chunk', ev.text)
             break
           case 'tool-call': {
-            event.sender.send('chat:tool', toolStatusLabel(ev.toolName))
             const fcName = namespaceToolName(ev.serverId, ev.toolName)
+            const target = extractTarget(ev.args)
+            // 权限闸：read 透传；write/exec/network 查授权，未命中弹 toast 等审批（D3）
+            const decision = permissionGate
+              ? permissionGate.check({
+                  scope: ev.scope,
+                  target,
+                  agentName: ev.agentName,
+                  serverId: ev.serverId
+                })
+              : { decision: 'allow' as const, reason: 'auto-read' as const }
+
+            if (decision.decision === 'needs-approval') {
+              // 弹审批 toast，阻塞等待用户点击（超时/打断默认拒绝）
+              const grade = await approvalBridge.request(
+                event.sender,
+                {
+                  scope: ev.scope,
+                  target,
+                  agentName: ev.agentName,
+                  toolName: ev.toolName
+                },
+                ac.signal
+              )
+              if (grade === 'deny') {
+                toolLogger?.log({
+                  ts: Date.now(),
+                  agentName: ev.agentName,
+                  serverId: ev.serverId,
+                  toolName: ev.toolName,
+                  argsSummary: ev.argsSummary,
+                  ok: false,
+                  deniedReason: 'user-denied'
+                })
+                resolution = { ok: false, error: '你没同意这次操作，那我先不动它～' }
+                break
+              }
+              // 同意 → 按粒度落地授权（once 不留痕，session/forever 入库/缓存）
+              permissionGate?.grant(
+                { scope: ev.scope, target, agentName: ev.agentName, serverId: ev.serverId },
+                grade
+              )
+            }
+
+            event.sender.send('chat:tool', toolStatusLabel(ev.toolName))
+            const startedAt = Date.now()
             resolution = mcpHost
               ? await mcpHost.invoke(fcName, ev.args)
               : { ok: false, error: '工具不可用' }
+            toolLogger?.log({
+              ts: startedAt,
+              agentName: ev.agentName,
+              serverId: ev.serverId,
+              toolName: ev.toolName,
+              argsSummary: ev.argsSummary,
+              resultSummary: resolution.ok ? resolution.resultSummary : resolution.error,
+              ok: resolution.ok,
+              latencyMs: Date.now() - startedAt
+            })
             break
           }
           case 'done':
@@ -293,6 +361,14 @@ app.whenReady().then(async () => {
   ipcMain.on('chat:abort', () => {
     chatAbort?.abort()
     chatAbort = null
+  })
+
+  // W4 D3：renderer 点了审批 toast（once/session/forever/deny）→ 喂回正在等待的 tool-call
+  ipcMain.on('permission:respond', (_e, reqId: unknown, grade: unknown) => {
+    const valid: GrantGrade[] = ['once', 'session', 'forever', 'deny']
+    if (typeof reqId === 'string' && valid.includes(grade as GrantGrade)) {
+      approvalBridge.resolve(reqId, grade as GrantGrade)
+    }
   })
 
   // 文件选择框 —— 拖放在透明置顶窗口上不可靠，提供 100% 可用的「点击喂文件」入口。

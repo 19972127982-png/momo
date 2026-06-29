@@ -36,6 +36,23 @@ const echopet = {
     summarize: (path: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('file:summarize', path)
   },
+  permission: {
+    /** 主进程请求授权（工具调用前）—— 回调收到 {reqId, scope, target, agentName, toolName} */
+    onRequest: makeChannel<
+      [
+        {
+          reqId: string
+          scope: 'read' | 'write' | 'exec' | 'network'
+          target: string
+          agentName: string
+          toolName: string
+        }
+      ]
+    >('permission:request'),
+    /** 用户在 toast 上的选择：once / session / forever / deny */
+    respond: (reqId: string, grade: 'once' | 'session' | 'forever' | 'deny'): void =>
+      ipcRenderer.send('permission:respond', reqId, grade)
+  },
   config: {
     getStatus: (): Promise<{ hasKey: boolean; encryptionAvailable: boolean }> =>
       ipcRenderer.invoke('config:get-status'),

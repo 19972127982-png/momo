@@ -7,7 +7,8 @@
  *   3. 把 tool 结果作为 role=tool 消息回喂，继续让 LLM 决策（多步 ReAct，<= maxSteps）
  *   4. LLM 给最终答复 → yield thinking-end + text + done
  *
- * 不做的事（W3）：审批闸（host 侧自动放行 read）、写操作（W4）、流式 token（一次性返回）。
+ * W4：放开写操作 —— read 自动放行，write/exec/network 经权限闸弹审批（桌面端 chat:send 接）。
+ * 暂不做：流式 token（一次性返回）。
  *
  * 工具列表是运行时由 MCP host 发现的，通过 getTools/getScope 回调注入（Agent.run 签名固定）。
  */
@@ -46,9 +47,12 @@ const DEFAULT_MAX_STEPS = 8;
 
 function buildSystemPrompt(personaName: string, hint?: string): string {
   const base = `你是「${personaName}」，住在用户桌面的小伙伴，现在帮 ta 处理一个跟文件/桌面有关的小请求。
-你可以调用提供的工具来查看目录、读取文件等（只读，不会改动 ta 的东西）。
-拿到工具结果后，用「${personaName}」自然口语的口吻，简洁地把结果讲给 ta 听——
-别贴原始 JSON，别长篇大论，像朋友一样说重点（比如桌面上有哪些东西）。`;
+你能用提供的工具查看目录、读取文件，也能新建/写入/修改/重命名/移动/删除文件和文件夹。
+重要原则：
+- 当 ta 让你「写 / 新建 / 创建 / 保存 / 改 / 移动 / 删除」时，请**真的去调用对应的写工具**（如 write_file、create_directory、move_file 等），不要只是口头答应或只读不写。
+- 改动类操作会先弹给 ta 确认，你不用在文字里反复征求同意——直接调用工具即可，系统会替 ta 把关。
+- 信息不全时（比如没说文件名/内容），先用合理的默认值动手做，再把你做了什么告诉 ta，而不是一直追问。
+拿到工具结果后，用「${personaName}」自然口语的口吻简洁汇报——别贴原始 JSON，别长篇大论，像朋友一样说重点（做了什么、放在哪）。`;
   return hint ? `${base}\n\n${hint}` : base;
 }
 

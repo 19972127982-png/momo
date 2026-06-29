@@ -37,10 +37,12 @@ describe("mcpToolToFunctionTool", () => {
 });
 
 describe("inferScope", () => {
-  it("list/read/get/search → read", () => {
+  it("list/read/get/本地 search → read", () => {
     expect(inferScope("list_directory")).toBe("read");
     expect(inferScope("read_file")).toBe("read");
     expect(inferScope("get_file_info")).toBe("read");
+    // 本地文件搜索属 read，不应被当成网络
+    expect(inferScope("search_files")).toBe("read");
   });
   it("write/create/edit/move/delete → write", () => {
     expect(inferScope("write_file")).toBe("write");
@@ -52,9 +54,10 @@ describe("inferScope", () => {
     expect(inferScope("run_command")).toBe("exec");
     expect(inferScope("exec_shell")).toBe("exec");
   });
-  it("fetch/search/download → network", () => {
+  it("fetch/web/download → network", () => {
     expect(inferScope("brave_web_search")).toBe("network");
     expect(inferScope("fetch_url")).toBe("network");
+    expect(inferScope("download_file")).toBe("network");
   });
   it("命名空间化的名字也能判", () => {
     expect(inferScope("filesystem__write_file")).toBe("write");

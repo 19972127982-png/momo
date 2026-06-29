@@ -293,6 +293,111 @@ canvas {
   color: rgba(170, 68, 102, 0.85);
 }
 
+/* ===== 权限审批 toast（W4 D3） ===== */
+.approval-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 280px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 138, 174, 0.55);
+  border-radius: 14px;
+  padding: 10px 12px;
+  backdrop-filter: blur(8px);
+  z-index: 20;
+  /* 入场上浮一次，随后定格呼吸高亮（不位移，避免跟着桌宠左右晃） */
+  animation:
+    approval-in 0.22s ease both,
+    approval-glow 2s ease-in-out 0.22s infinite;
+}
+
+@keyframes approval-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+/* 呼吸高亮：只动阴影/描边，不动位置 —— 安静地提示「在等你点」 */
+@keyframes approval-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 8px 22px rgba(0, 0, 0, 0.16),
+      0 0 0 0 rgba(255, 138, 174, 0);
+  }
+  50% {
+    box-shadow:
+      0 8px 22px rgba(0, 0, 0, 0.16),
+      0 0 0 4px rgba(255, 138, 174, 0.22);
+  }
+}
+
+.approval-toast__msg {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #2a2a2a;
+  margin-bottom: 8px;
+}
+
+.approval-toast__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.approval-btn {
+  flex: 1;
+  border: none;
+  border-radius: 9px;
+  padding: 5px 8px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    transform 0.1s ease;
+}
+
+.approval-btn:active {
+  transform: scale(0.95);
+}
+
+.approval-btn--once,
+.approval-btn--session {
+  background: rgba(255, 138, 174, 0.16);
+  color: #aa4466;
+}
+
+.approval-btn--once:hover,
+.approval-btn--session:hover {
+  background: rgba(255, 138, 174, 0.3);
+}
+
+.approval-btn--forever {
+  background: rgba(120, 90, 200, 0.16);
+  color: #6a4bb0;
+}
+
+.approval-btn--forever:hover {
+  background: rgba(120, 90, 200, 0.3);
+}
+
+.approval-btn--deny {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.approval-btn--deny:hover {
+  background: rgba(0, 0, 0, 0.12);
+}
+
 /* ===== ConfigDialog 配置弹窗 ===== */
 .config-mask {
   position: absolute;

@@ -54,13 +54,15 @@ const WRITE_HINTS = [
   "append",
 ];
 const EXEC_HINTS = ["exec", "run", "spawn", "shell", "command", "kill"];
+// 注意："search" 不在网络关键词里 —— 本地文件搜索（filesystem search_files）属 read；
+// 网页搜索（brave_web_search）靠 "web" 命中。
 const NETWORK_HINTS = [
   "fetch",
   "http",
   "request",
   "download",
   "upload",
-  "search",
+  "web",
   "browse",
 ];
 

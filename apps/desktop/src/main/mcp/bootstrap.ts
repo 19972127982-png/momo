@@ -2,7 +2,8 @@
  * MCP host 引导（W3 D6）
  *
  * 懒启动：第一次路由判到「实用模式」时才 spawn MCP server（避免拖慢应用启动 + 没 npx 也能正常陪聊）。
- * W3 只挂一个 filesystem server，白名单限制在用户「桌面」目录（只读用法）。
+ * 只挂一个 filesystem server，白名单限制在用户「桌面」目录。
+ * scope 按工具名推断（W4）：read 类透传、write_file/move 等触发权限审批。
  *
  * 失败容忍：启动失败返回 null，chat handler 会降级为「我现在还查不了文件」之类的友好提示。
  */
@@ -28,8 +29,8 @@ export async function getMcpHost(): Promise<McpHost | null> {
       await h.register({
         id: 'filesystem',
         command: 'npx',
-        args: ['-y', '@modelcontextprotocol/server-filesystem', desktopDir()],
-        defaultScope: 'read'
+        args: ['-y', '@modelcontextprotocol/server-filesystem', desktopDir()]
+        // 不设 defaultScope —— 让 scopeOf 按工具名推断（read 透传 / write_file 等触发审批）
       })
       host = h
       return host
