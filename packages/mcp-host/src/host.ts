@@ -86,10 +86,16 @@ export class McpHost {
     return this.servers.has(serverId);
   }
 
-  /** 所有已连接 server 的工具，命名空间化后给 LLM */
-  listFunctionTools(): FunctionTool[] {
+  /**
+   * 已连接 server 的工具，命名空间化后给 LLM。
+   * 传 serverIds 则只返回这些 server 的工具（每个 Agent 只看自己该看的工具）；
+   * 不传返回全部。未注册的 id 静默跳过。
+   */
+  listFunctionTools(serverIds?: readonly string[]): FunctionTool[] {
     const out: FunctionTool[] = [];
+    const filter = serverIds ? new Set(serverIds) : null;
     for (const [id, s] of this.servers) {
+      if (filter && !filter.has(id)) continue;
       for (const t of s.tools) out.push(mcpToolToFunctionTool(t, id));
     }
     return out;

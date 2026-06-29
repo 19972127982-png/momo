@@ -11,10 +11,13 @@ import { maybeSummarize } from './memory/summarizer'
 import { maybeEvolvePersonality } from './memory/personalityEngine'
 import { createDeepSeekFcClient } from './fileAgentClient'
 import { createLlmIntentClassifier } from './intentClassifier'
-import { getMcpHost, closeMcpHost, desktopDir } from './mcp/bootstrap'
+import { getMcpHost, ensureServers, closeMcpHost, desktopDir } from './mcp/bootstrap'
+import { serversForAgent } from './mcp/serverRegistry'
+import type { McpHost } from '@echopet/mcp-host'
 import { PermissionGate, extractTarget } from './permission/gate'
 import { ToolLogger } from './permission/toolLogger'
 import { approvalBridge } from './permission/approvalBridge'
+import { SkillManager } from './skills/skillManager'
 import { summarizeFile } from './fileSummary'
 import { closeOcr } from './fileSummary/ocr'
 import type { AppSettings } from '../shared/ipcTypes'
@@ -22,6 +25,7 @@ import {
   CompanionAgent,
   FileAgent,
   HybridIntentRouter,
+  classifyUtilityAgent,
   DefaultPromptBuilder,
   deriveGrowthStage,
   summarizeUserProfile,
@@ -29,7 +33,8 @@ import {
   type Agent,
   type AgentRunContext,
   type ToolResolution,
-  type GrantGrade
+  type GrantGrade,
+  type UtilityAgentName
 } from '@echopet/agent-core'
 
 let petWindow: BrowserWindow | null = null
@@ -55,6 +60,8 @@ let memoryStore: SqliteMemoryStore | null = null
 // W4 D2：权限闸 + 工具调用审计（启动时 init，与 db 同生命周期）
 let permissionGate: PermissionGate | null = null
 let toolLogger: ToolLogger | null = null
+// W4 D5：Skills 启用态门面
+let skillManager: SkillManager | null = null
 // 距上次成功画像提取的轮数 —— 触发「每 5 轮兜底」用；进程级计数，重启归零可接受
 let turnsSinceProfileExtraction = 0
 
@@ -103,6 +110,8 @@ app.whenReady().then(async () => {
   // W4 D2：权限闸 + 审计（载入已有永久授权）
   permissionGate = new PermissionGate(db)
   toolLogger = new ToolLogger(db)
+  // W4 D5：Skills 启用态
+  skillManager = new SkillManager(db)
 
   petWindow = createPetWindow()
 
@@ -160,19 +169,34 @@ app.whenReady().then(async () => {
 
     // 一级路由：陪伴 vs 实用
     const route = await intentRouter.route(userInput, { workingMemory: [], signal: ac.signal })
-    // 实用模式：懒启动 MCP host。拿不到就降级走陪伴，保证总有回应。
-    let mcpHost: Awaited<ReturnType<typeof getMcpHost>> = null
+
+    // 二级路由（utility 时）：选 File / Dev / System，再按需 spawn 它需要的 server。
+    // 没有 server 就绪（如 DevAgent 但没装 uvx、或 SystemAgent 暂未实现）→ 降级陪伴。
+    let mcpHost: McpHost | null = null
+    let readyServerIds: string[] = []
+    let pickedAgent: UtilityAgentName = 'FileAgent'
     if (route.mode === 'utility') {
+      pickedAgent = classifyUtilityAgent(userInput).agent
+      // Skills 门控：只有「启用的 Skill 引入的 server」才允许 spawn。
+      // 没开对应 Skill（如关掉文件管家）→ 该 Agent 拿不到工具 → 降级陪伴。
+      const allowedServers = skillManager?.enabledServerIds() ?? []
+      const wanted = serversForAgent(pickedAgent).filter((id) => allowedServers.includes(id))
       mcpHost = await getMcpHost()
-      if (!mcpHost) console.warn('[chat] 实用模式但 MCP host 不可用，降级为陪伴')
+      readyServerIds = await ensureServers(wanted)
+      if (readyServerIds.length === 0) {
+        console.warn(
+          `[chat] 实用模式选了 ${pickedAgent}，但无可用 server（Skill 未启用或启动失败），降级为陪伴`
+        )
+      }
     }
-    const useUtility = route.mode === 'utility' && mcpHost !== null
+    const useUtility = route.mode === 'utility' && mcpHost !== null && readyServerIds.length > 0
 
     // 选择 agent + 组装 ctx
     let agent: Agent
     let ctx: AgentRunContext
     if (useUtility && mcpHost) {
       const host = mcpHost
+      const serverIds = readyServerIds
       const [vector, totalInteractions] = await Promise.all([
         store.getPersonality(),
         store.getTotalInteractions()
@@ -189,11 +213,13 @@ app.whenReady().then(async () => {
         userCalling: settings.userNickname || undefined,
         signal: ac.signal
       }
+      const skillAddon = skillManager?.promptAddon() ?? ''
+      const baseHint = `用户的桌面目录绝对路径是：${desktopDir()}\n读写文件时请用这个绝对路径或它的子路径，不要用 ~ 或相对路径。`
       agent = new FileAgent({
         client: fcClient,
-        getTools: () => host.listFunctionTools(),
-        getScope: (n) => host.scopeOf(n),
-        systemHint: `用户的桌面目录绝对路径是：${desktopDir()}\n列目录 / 读文件时请用这个绝对路径或它的子路径，不要用 ~ 或相对路径。`
+        getTools: () => host.listFunctionTools(serverIds),
+        getScope: (n: string) => host.scopeOf(n),
+        systemHint: skillAddon ? `${baseHint}\n\n${skillAddon}` : baseHint
       })
     } else {
       const [vector, totalInteractions, workingMemory, profile, episodic] = await Promise.all([
@@ -527,6 +553,16 @@ app.whenReady().then(async () => {
       memoryStore.getTotalInteractions()
     ])
     return buildPersonalitySnapshot(vector, interactions)
+  })
+
+  // ---------- W4 D5：Skills ----------
+  ipcMain.handle('skills:list', () => skillManager?.list() ?? [])
+  ipcMain.handle('skills:set-enabled', (_e, id: unknown, enabled: unknown) => {
+    if (typeof id !== 'string' || typeof enabled !== 'boolean') {
+      return { ok: false as const, error: '参数错误' }
+    }
+    const ok = skillManager?.setEnabled(id, enabled) ?? false
+    return { ok }
   })
 
   globalShortcut.register('CommandOrControl+Shift+Q', () => {

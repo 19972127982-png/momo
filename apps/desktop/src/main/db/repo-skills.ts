@@ -49,17 +49,18 @@ function rowTo(row: RawSkillRow): SkillRow {
 export class SkillRepo {
   constructor(private readonly db: DB) {}
 
-  /** 幂等播种 3 个内置包（仅插入缺失的，不覆盖用户的 enabled）。 */
+  /** 幂等播种内置包（仅插入缺失的，不覆盖用户的 enabled）。defaultEnabled 决定首播时是否开。 */
   seed(now: number): void {
     const stmt = this.db.prepare(
       `INSERT OR IGNORE INTO skills (id, name, enabled, included_servers, prompt_addon, created_at)
-       VALUES (@id, @name, 0, @servers, @addon, @now)`
+       VALUES (@id, @name, @enabled, @servers, @addon, @now)`
     )
     const tx = this.db.transaction(() => {
       for (const s of BUILTIN_SKILLS) {
         stmt.run({
           id: s.id,
           name: s.name,
+          enabled: s.defaultEnabled ? 1 : 0,
           servers: JSON.stringify(s.servers),
           addon: s.promptAddon,
           now

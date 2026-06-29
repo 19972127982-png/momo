@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import type { AppSettings, PersonalitySnapshot } from '../shared/ipcTypes'
+import type { AppSettings, PersonalitySnapshot, SkillView } from '../shared/ipcTypes'
 
 type Unsubscribe = () => void
 
@@ -68,6 +68,11 @@ const echopet = {
   },
   personality: {
     getSnapshot: (): Promise<PersonalitySnapshot> => ipcRenderer.invoke('personality:get-snapshot')
+  },
+  skills: {
+    list: (): Promise<SkillView[]> => ipcRenderer.invoke('skills:list'),
+    setEnabled: (id: string, enabled: boolean): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('skills:set-enabled', id, enabled)
   }
 }
 

@@ -9,45 +9,44 @@ import {
 } from "../src/skills";
 
 describe("BUILTIN_SKILLS", () => {
-  it("W4 落 3 个内置包", () => {
-    expect(BUILTIN_SKILLS.map((s) => s.id)).toEqual([
-      "dev",
-      "file-butler",
-      "bare",
-    ]);
+  it("当前落 2 个内置包（文件管家 + 裸装）", () => {
+    expect(BUILTIN_SKILLS.map((s) => s.id)).toEqual(["file-butler", "bare"]);
   });
 
-  it("裸装无 server、无增补", () => {
+  it("文件管家默认启用、挂 filesystem", () => {
+    const fb = getSkill("file-butler");
+    expect(fb?.servers).toEqual(["filesystem"]);
+    expect(fb?.defaultEnabled).toBe(true);
+  });
+
+  it("裸装无 server、无增补、默认不启用", () => {
     const bare = getSkill("bare");
     expect(bare?.servers).toEqual([]);
     expect(bare?.promptAddon).toBe("");
+    expect(bare?.defaultEnabled).toBeFalsy();
   });
 });
 
 describe("getSkill / isSkillId", () => {
   it("已知 id", () => {
-    expect(getSkill("dev")?.name).toBe("开发者助手");
+    expect(getSkill("file-butler")?.name).toBe("文件管家");
     expect(isSkillId("file-butler")).toBe(true);
   });
 
   it("未知 id", () => {
-    expect(getSkill("research")).toBeUndefined();
+    expect(getSkill("dev")).toBeUndefined();
     expect(isSkillId("research")).toBe(false);
   });
 });
 
 describe("serversForEnabledSkills", () => {
   it("并集去重、保持顺序", () => {
-    expect(serversForEnabledSkills(["dev", "file-butler"])).toEqual([
-      "git",
-      "filesystem-projects",
-      "filesystem-desktop",
-    ]);
+    expect(serversForEnabledSkills(["file-butler"])).toEqual(["filesystem"]);
   });
 
   it("忽略未知 id 与裸装", () => {
     expect(serversForEnabledSkills(["bare", "nope", "file-butler"])).toEqual([
-      "filesystem-desktop",
+      "filesystem",
     ]);
   });
 
@@ -70,9 +69,7 @@ describe("promptAddonForEnabledSkills", () => {
 
 describe("defaultScopesForEnabledSkills", () => {
   it("并集去重", () => {
-    expect(defaultScopesForEnabledSkills(["dev", "file-butler"])).toEqual([
-      "read",
-    ]);
+    expect(defaultScopesForEnabledSkills(["file-butler"])).toEqual(["read"]);
   });
 
   it("裸装 → 空", () => {

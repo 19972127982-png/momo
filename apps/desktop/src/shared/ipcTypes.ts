@@ -41,3 +41,12 @@ export interface PersonalitySnapshot {
   interactions: number
   stage: '初识' | '熟悉' | '亲密' | '挚友'
 }
+
+/** W4 D5：设置面板 Skills tab 的一行（main SkillManager.list 返回） */
+export interface SkillView {
+  id: string
+  name: string
+  enabled: boolean
+  servers: string[]
+  promptAddon: string
+}

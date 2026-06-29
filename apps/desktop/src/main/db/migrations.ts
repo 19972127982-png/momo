@@ -155,5 +155,15 @@ CREATE TABLE IF NOT EXISTS tool_call_logs (
 CREATE INDEX IF NOT EXISTS idx_tool_logs_ts ON tool_call_logs (ts);
 CREATE INDEX IF NOT EXISTS idx_tool_logs_agent ON tool_call_logs (agent_name);
 `
+  },
+  {
+    version: 4,
+    name: 'skills_reconcile_drop_dev_enable_filebutler',
+    sql: `
+-- DevAgent（git）暂不做：清掉旧的「开发者助手」Skill 行
+DELETE FROM skills WHERE id = 'dev';
+-- 文件管家一次性默认启用（开箱即用；之后用户可自行关闭，本迁移只跑一次）
+UPDATE skills SET enabled = 1 WHERE id = 'file-butler';
+`
   }
 ]

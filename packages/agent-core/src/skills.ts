@@ -5,11 +5,13 @@
  * 本模块只定义内置包 + 解析（启用集合 → server 并集 / prompt 增补），
  * 不碰 SQLite（skills / mcp_servers 表）与实际 spawn —— 那些在 apps/desktop/main。
  *
- * W4 落 3 个内置包；研究助手（WebAgent / brave-search）随 WebAgent 一起推迟。
+ * W4：DevAgent（git）暂不做，已移除「开发者助手」；当前落「文件管家 + 裸装」。
+ * SystemAgent（剪贴板/通知）的「系统助手」包随 SystemAgent 在 D6 补。
+ * server id 与 apps/desktop serverRegistry 对齐（'filesystem'）。
  */
 import type { ToolScope } from "./types";
 
-export type SkillId = "dev" | "file-butler" | "bare";
+export type SkillId = "file-butler" | "bare";
 
 export interface SkillDef {
   id: SkillId;
@@ -20,24 +22,19 @@ export interface SkillDef {
   promptAddon: string;
   /** 该 Skill 期望默认免审批的 scope（仍受权限闸兜底；read 本就免审批） */
   defaultScopes: readonly ToolScope[];
+  /** 首次播种时的默认启用态（文件管家默认开，开箱即用） */
+  defaultEnabled?: boolean;
 }
 
 export const BUILTIN_SKILLS: readonly SkillDef[] = [
   {
-    id: "dev",
-    name: "开发者助手",
-    servers: ["git", "filesystem-projects"],
-    promptAddon:
-      "你可以帮 ta 看 git 状态、读项目文件。涉及改动（commit / 写文件）务必先说清要做什么、再等 ta 点头。",
-    defaultScopes: ["read"],
-  },
-  {
     id: "file-butler",
     name: "文件管家",
-    servers: ["filesystem-desktop"],
+    servers: ["filesystem"],
     promptAddon:
-      "你可以帮 ta 整理桌面文件（列出、归类、重命名、移动）。任何写操作都要先征得同意。",
+      "你可以帮 ta 整理桌面文件（列出、读取、新建、归类、重命名、移动）。写操作会先弹给 ta 确认，确认后直接动手即可。",
     defaultScopes: ["read"],
+    defaultEnabled: true,
   },
   {
     id: "bare",

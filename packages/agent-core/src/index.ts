@@ -103,10 +103,13 @@ export {
 
 export {
   classifyIntentByKeywords,
+  classifyUtilityAgent,
   hasWeakTaskHint,
   KeywordIntentRouter,
   HybridIntentRouter,
   type KeywordIntentResult,
+  type UtilityAgentName,
+  type UtilityAgentResult,
   type LlmIntentClassifier,
   type HybridRouterOptions,
 } from "./intent-router";

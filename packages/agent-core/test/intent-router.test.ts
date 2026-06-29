@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   classifyIntentByKeywords,
+  classifyUtilityAgent,
   hasWeakTaskHint,
   KeywordIntentRouter,
   HybridIntentRouter,
@@ -105,6 +106,21 @@ describe("KeywordIntentRouter", () => {
   it("闲聊走 companion", async () => {
     const r = await router.route("陪我聊会儿天", ctx);
     expect(r.mode).toBe("companion");
+  });
+});
+
+describe("classifyUtilityAgent（二级路由）", () => {
+  it("剪贴板 / 通知 → SystemAgent", () => {
+    expect(classifyUtilityAgent("把这段复制到剪贴板").agent).toBe(
+      "SystemAgent",
+    );
+    expect(classifyUtilityAgent("一会儿弹个提醒我").agent).toBe("SystemAgent");
+  });
+
+  it("文件 / 桌面 / 默认 → FileAgent", () => {
+    expect(classifyUtilityAgent("在桌面新建一个 txt").agent).toBe("FileAgent");
+    expect(classifyUtilityAgent("整理一下我的文件").agent).toBe("FileAgent");
+    expect(classifyUtilityAgent("随便干点啥").agent).toBe("FileAgent");
   });
 });
 

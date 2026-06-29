@@ -54,6 +54,39 @@ export interface KeywordIntentResult {
   intent?: string;
 }
 
+// =====================================================================
+// 二级路由（W4）：utility 模式下选具体 Agent —— File / Dev / System
+// =====================================================================
+
+// 注：DevAgent（git）暂不做，已从二级路由移除；后续再加回。
+export type UtilityAgentName = "FileAgent" | "SystemAgent";
+
+/** 剪贴板 / 系统通知类关键词 → SystemAgent */
+const SYSTEM_PATTERNS: readonly RegExp[] = [
+  /剪贴板|剪切板|clipboard/i,
+  /复制(到剪|这段|内容)|拷贝到剪/i,
+  /(系统)?通知|notification|弹个?提醒|提醒我|notify/i,
+];
+
+export interface UtilityAgentResult {
+  agent: UtilityAgentName;
+  confidence: number;
+}
+
+/**
+ * 二级路由：在已判 utility 的前提下，按关键词选 File / System。
+ * 默认 FileAgent（文件意图最常见，也是兜底）。纯关键词；LLM 二级兜底后续可叠加。
+ */
+export function classifyUtilityAgent(userInput: string): UtilityAgentResult {
+  const text = (userInput ?? "").trim();
+  if (text) {
+    for (const re of SYSTEM_PATTERNS) {
+      if (re.test(text)) return { agent: "SystemAgent", confidence: 0.85 };
+    }
+  }
+  return { agent: "FileAgent", confidence: 0.7 };
+}
+
 /**
  * 纯关键词分类。返回 companion（默认）或 utility（命中文件意图）。
  * confidence：强短语 0.9 / 动作+对象 0.8 / 未命中（companion）0.6。

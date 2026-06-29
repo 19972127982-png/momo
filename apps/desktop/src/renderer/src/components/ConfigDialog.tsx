@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AppSettings, PersonalitySnapshot } from '../../../shared/ipcTypes'
+import SkillsPanel from './settings/SkillsPanel'
+
+type SettingsTab = 'basic' | 'skills'
+
+const TABS: Array<{ id: SettingsTab; label: string }> = [
+  { id: 'basic', label: '基础' },
+  { id: 'skills', label: '技能' }
+]
 
 interface ConfigDialogProps {
   visible: boolean
@@ -47,6 +55,7 @@ function ConfigDialog({
   const [apiKey, setApiKey] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [tab, setTab] = useState<SettingsTab>('basic')
   const firstInputRef = useRef<HTMLInputElement>(null)
 
   // dialog 每次「打开」时从 props sync 一次表单值；打开期间 props 变化不再覆盖用户输入
@@ -58,6 +67,7 @@ function ConfigDialog({
     }
     setPetName(initialSettings.petName)
     setUserNickname(initialSettings.userNickname)
+    setTab('basic')
     const t = setTimeout(() => firstInputRef.current?.focus(), 180)
     return () => clearTimeout(t)
     // 故意只 watch visible —— 打开瞬间 sync 一次，期间 prop 漂移不打断用户编辑
@@ -124,6 +134,23 @@ function ConfigDialog({
       <div className="config-dialog" onKeyDown={handleKeyDown}>
         <div className="config-dialog__title">设置</div>
 
+        <div className="config-tabs">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              className={`config-tab${tab === t.id ? ' config-tab--active' : ''}`}
+              onClick={() => setTab(t.id)}
+              type="button"
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'skills' && <SkillsPanel visible={visible} />}
+
+        {tab === 'basic' && (
+          <>
         {/* ===== 桌宠 ===== */}
         <div className="config-dialog__section">
           <div className="config-dialog__section-title">桌宠</div>
@@ -224,24 +251,34 @@ function ConfigDialog({
             </button>
           )}
         </div>
+          </>
+        )}
 
         {error && <div className="config-dialog__error">{error}</div>}
 
         <div className="config-dialog__actions">
-          <button
-            className="config-dialog__btn config-dialog__btn--ghost"
-            onClick={onClose}
-            disabled={saving}
-          >
-            取消
-          </button>
-          <button
-            className="config-dialog__btn config-dialog__btn--primary"
-            onClick={() => void submit()}
-            disabled={saving}
-          >
-            {saving ? '保存中…' : '保存'}
-          </button>
+          {tab === 'basic' ? (
+            <>
+              <button
+                className="config-dialog__btn config-dialog__btn--ghost"
+                onClick={onClose}
+                disabled={saving}
+              >
+                取消
+              </button>
+              <button
+                className="config-dialog__btn config-dialog__btn--primary"
+                onClick={() => void submit()}
+                disabled={saving}
+              >
+                {saving ? '保存中…' : '保存'}
+              </button>
+            </>
+          ) : (
+            <button className="config-dialog__btn config-dialog__btn--primary" onClick={onClose}>
+              完成
+            </button>
+          )}
         </div>
       </div>
     </div>
