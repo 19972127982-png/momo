@@ -19,7 +19,12 @@
  * 由调用方（companionClient）拼接好 system + 工作记忆 + 当前 user 输入再传入。
  */
 
-import type { ChatCompletionMessage } from '@echopet/agent-core'
+import type {
+  ChatCompletionMessage,
+  FunctionTool,
+  FunctionCallingResult,
+  FunctionToolCall
+} from '@echopet/agent-core'
 
 const DEEPSEEK_ENDPOINT = 'https://api.deepseek.com/v1/chat/completions'
 const DEEPSEEK_MODEL = 'deepseek-chat'
@@ -55,6 +60,18 @@ function toApiMessage(m: ChatCompletionMessage): Record<string, unknown> {
     if (m.toolCallId) out.tool_call_id = m.toolCallId
     if (m.name) out.name = m.name
     return out
+  }
+  // assistant 发起了 function calling —— 回喂时必须带 tool_calls
+  if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+    return {
+      role: 'assistant',
+      content: m.content ?? '',
+      tool_calls: m.toolCalls.map((tc) => ({
+        id: tc.id,
+        type: 'function',
+        function: { name: tc.name, arguments: tc.arguments }
+      }))
+    }
   }
   return { role: m.role, content: m.content }
 }
@@ -124,6 +141,91 @@ export async function completeDeepSeek(
       throw new Error('DeepSeek 返回空内容')
     }
     return content
+  } finally {
+    clearTimeout(timer)
+    signal.removeEventListener('abort', onOuterAbort)
+  }
+}
+
+/** DeepSeek tool_calls 响应形状 */
+interface DeepSeekToolCall {
+  id?: string
+  function?: { name?: string; arguments?: string }
+}
+
+/**
+ * function calling 补全（非流式）—— 工作族 Agent 用。
+ * 返回 toolCalls（LLM 要调工具）或 content（最终答复）。约定不抛异常：失败走 result.error。
+ */
+export async function completeDeepSeekWithTools(
+  messages: readonly ChatCompletionMessage[],
+  tools: readonly FunctionTool[],
+  apiKey: string,
+  signal: AbortSignal,
+  options: StreamDeepSeekOptions = {}
+): Promise<FunctionCallingResult> {
+  const timeoutMs = options.timeoutMs ?? 30_000
+  const inner = new AbortController()
+  const onOuterAbort = (): void => inner.abort()
+  signal.addEventListener('abort', onOuterAbort)
+  const timer = setTimeout(() => inner.abort(), timeoutMs)
+
+  try {
+    const body: Record<string, unknown> = {
+      model: DEEPSEEK_MODEL,
+      stream: false,
+      messages: messages.map(toApiMessage)
+    }
+    if (tools.length > 0) {
+      body.tools = tools
+      body.tool_choice = 'auto'
+    }
+    if (options.temperature !== undefined) body.temperature = options.temperature
+    if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens
+
+    const resp = await fetch(DEEPSEEK_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(body),
+      signal: inner.signal
+    })
+
+    if (!resp.ok) {
+      let detail = ''
+      try {
+        detail = (await resp.text()).slice(0, 160)
+      } catch {
+        /* ignore */
+      }
+      return { error: `DeepSeek 返回 ${resp.status}${detail ? ` — ${detail}` : ''}` }
+    }
+
+    const json = (await resp.json()) as {
+      choices?: Array<{ message?: { content?: string; tool_calls?: DeepSeekToolCall[] } }>
+    }
+    const msg = json.choices?.[0]?.message
+    const rawCalls = msg?.tool_calls ?? []
+
+    if (rawCalls.length > 0) {
+      const toolCalls: FunctionToolCall[] = rawCalls.map((c, i) => ({
+        id: c.id ?? `call_${i}`,
+        name: c.function?.name ?? '',
+        arguments: c.function?.arguments ?? '{}'
+      }))
+      return { toolCalls, content: msg?.content ?? '' }
+    }
+
+    return { content: msg?.content ?? '' }
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') {
+      return {
+        error: signal.aborted ? '请求中断' : `等了 ${Math.round(timeoutMs / 1000)}s 还没收到回复`
+      }
+    }
+    return { error: `网络异常：${(err as Error).message}` }
   } finally {
     clearTimeout(timer)
     signal.removeEventListener('abort', onOuterAbort)

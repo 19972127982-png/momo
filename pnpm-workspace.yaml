@@ -9,6 +9,8 @@ allowBuilds:
   electron: true
   electron-winstaller: true
   esbuild: true
+  # tesseract.js 唯一的 build 脚本是 opencollective 捐赠横幅，无需运行
+  tesseract.js: false
 
 onlyBuiltDependencies:
   - better-sqlite3

@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, globalShortcut, screen, safeStorage } from 'electron'
+import { app, BrowserWindow, ipcMain, globalShortcut, screen, safeStorage, dialog } from 'electron'
+import { basename } from 'node:path'
 import { createPetWindow } from './window'
 import { createDeepSeekClient } from './companionClient'
 import { loadApiKey, saveApiKey, clearApiKey, loadSettings, saveSettings } from './configStore'
@@ -8,13 +9,22 @@ import { SqliteMemoryStore } from './memory/sqliteMemoryStore'
 import { maybeExtractProfile } from './memory/profileExtractor'
 import { maybeSummarize } from './memory/summarizer'
 import { maybeEvolvePersonality } from './memory/personalityEngine'
+import { createDeepSeekFcClient } from './fileAgentClient'
+import { getMcpHost, closeMcpHost, desktopDir } from './mcp/bootstrap'
+import { summarizeFile } from './fileSummary'
+import { closeOcr } from './fileSummary/ocr'
 import type { AppSettings } from '../shared/ipcTypes'
 import {
   CompanionAgent,
+  FileAgent,
+  KeywordIntentRouter,
   DefaultPromptBuilder,
   deriveGrowthStage,
   summarizeUserProfile,
-  type AgentRunContext
+  namespaceToolName,
+  type Agent,
+  type AgentRunContext,
+  type ToolResolution
 } from '@echopet/agent-core'
 
 let petWindow: BrowserWindow | null = null
@@ -47,6 +57,19 @@ const companionAgent = new CompanionAgent({
   temperature: 1.0,
   maxTokens: 256
 })
+
+// W3 D6：一级路由（陪伴 vs 实用）+ 工作族 function-calling 客户端
+const intentRouter = new KeywordIntentRouter()
+const fcClient = createDeepSeekFcClient(() => cachedApiKey)
+
+/** tool-call → 给 UI 的中文状态提示 */
+function toolStatusLabel(toolName: string): string {
+  const n = toolName.toLowerCase()
+  if (n.includes('list') || n.includes('directory')) return '正在看你桌面上有什么…'
+  if (n.includes('read')) return '正在读取文件…'
+  if (n.includes('search') || n.includes('find')) return '正在查找文件…'
+  return '正在调用工具…'
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -90,9 +113,10 @@ app.whenReady().then(async () => {
     stopDrag()
   })
 
-  // ---------- 陪伴对话主路径（W3 D3/D4/D5：CompanionAgent + SQLite 三层记忆） ----------
-  // 流程：注入工作记忆 + 用户画像 + 性格 + 情景记忆召回 → CompanionAgent 流式
-  //   → 落库 + 异步画像提取 + 异步情景摘要 + 异步性格演化（写 evolution_log）。
+  // ---------- 对话主路径（W3 D3-D6：一级路由 → CompanionAgent / FileAgent） ----------
+  // 路由判「实用」→ FileAgent 走 MCP function calling（懒启动 filesystem server）；
+  // 否则 CompanionAgent：注入工作记忆 + 画像 + 性格 + 情景召回 → 流式。
+  // 两条路径共用 post-response：落库 + 互动计数 + 异步画像/情景摘要/性格演化。
   ipcMain.handle('chat:send', async (event, text: unknown) => {
     if (typeof text !== 'string' || !text.trim()) {
       return { ok: false as const, error: '空消息' }
@@ -117,25 +141,67 @@ app.whenReady().then(async () => {
     chatAbort = ac
 
     const settings = await loadSettings()
-    const [vector, totalInteractions, workingMemory, profile, episodic] = await Promise.all([
-      store.getPersonality(),
-      store.getTotalInteractions(),
-      store.recentMessages(20),
-      store.getUserProfile(),
-      store.recallEpisodicMemories(userInput, 3)
-    ])
+    const personaName = settings.petName || '小桃'
 
-    const ctx: AgentRunContext = {
-      userInput,
-      workingMemory,
-      userProfileSummary: summarizeUserProfile(profile),
-      recentEpisodicMemories: episodic,
-      personality: vector,
-      growthStage: deriveGrowthStage(totalInteractions),
-      totalInteractions,
-      personaName: settings.petName || '小桃',
-      userCalling: settings.userNickname || undefined,
-      signal: ac.signal
+    // 一级路由：陪伴 vs 实用
+    const route = await intentRouter.route(userInput, { workingMemory: [], signal: ac.signal })
+
+    // 实用模式：懒启动 MCP host。拿不到就降级走陪伴，保证总有回应。
+    let mcpHost: Awaited<ReturnType<typeof getMcpHost>> = null
+    if (route.mode === 'utility') {
+      mcpHost = await getMcpHost()
+      if (!mcpHost) console.warn('[chat] 实用模式但 MCP host 不可用，降级为陪伴')
+    }
+    const useUtility = route.mode === 'utility' && mcpHost !== null
+
+    // 选择 agent + 组装 ctx
+    let agent: Agent
+    let ctx: AgentRunContext
+    if (useUtility && mcpHost) {
+      const host = mcpHost
+      const [vector, totalInteractions] = await Promise.all([
+        store.getPersonality(),
+        store.getTotalInteractions()
+      ])
+      ctx = {
+        userInput,
+        workingMemory: [],
+        userProfileSummary: '',
+        recentEpisodicMemories: [],
+        personality: vector,
+        growthStage: deriveGrowthStage(totalInteractions),
+        totalInteractions,
+        personaName,
+        userCalling: settings.userNickname || undefined,
+        signal: ac.signal
+      }
+      agent = new FileAgent({
+        client: fcClient,
+        getTools: () => host.listFunctionTools(),
+        getScope: (n) => host.scopeOf(n),
+        systemHint: `用户的桌面目录绝对路径是：${desktopDir()}\n列目录 / 读文件时请用这个绝对路径或它的子路径，不要用 ~ 或相对路径。`
+      })
+    } else {
+      const [vector, totalInteractions, workingMemory, profile, episodic] = await Promise.all([
+        store.getPersonality(),
+        store.getTotalInteractions(),
+        store.recentMessages(20),
+        store.getUserProfile(),
+        store.recallEpisodicMemories(userInput, 3)
+      ])
+      ctx = {
+        userInput,
+        workingMemory,
+        userProfileSummary: summarizeUserProfile(profile),
+        recentEpisodicMemories: episodic,
+        personality: vector,
+        growthStage: deriveGrowthStage(totalInteractions),
+        totalInteractions,
+        personaName,
+        userCalling: settings.userNickname || undefined,
+        signal: ac.signal
+      }
+      agent = companionAgent
     }
 
     // 先把用户这轮消息落库（即使后面 LLM 失败，用户输入也不该丢）
@@ -144,17 +210,30 @@ app.whenReady().then(async () => {
     let errored = false
     let reply = ''
     try {
-      for await (const ev of companionAgent.run(ctx)) {
+      // 手动驱动 generator —— 工作族 Agent 会 yield tool-call，需 next(resolution) 喂回结果。
+      // 陪伴族不 yield tool-call，resolution 恒为 undefined，行为与 for-await 等价。
+      const gen = agent.run(ctx)
+      let result = await gen.next()
+      while (!result.done) {
+        const ev = result.value
         if (event.sender.isDestroyed()) break
+        let resolution: ToolResolution | undefined
         switch (ev.kind) {
           case 'thinking-end':
-            // renderer 在 first chunk 到达时自动切 thinking → speaking（W2 已有逻辑），
-            // 主进程不需要单独 IPC 通知。保留这个 case 让 switch 完整覆盖 AgentEvent
+            // renderer 在 first chunk 到达时自动切 thinking → speaking（W2 已有逻辑）
             break
           case 'text':
             reply += ev.text
             event.sender.send('chat:chunk', ev.text)
             break
+          case 'tool-call': {
+            event.sender.send('chat:tool', toolStatusLabel(ev.toolName))
+            const fcName = namespaceToolName(ev.serverId, ev.toolName)
+            resolution = mcpHost
+              ? await mcpHost.invoke(fcName, ev.args)
+              : { ok: false, error: '工具不可用' }
+            break
+          }
           case 'done':
             event.sender.send('chat:end')
             break
@@ -162,9 +241,8 @@ app.whenReady().then(async () => {
             errored = true
             event.sender.send('chat:error', ev.error)
             break
-          // tool-call event 在 v2.1 CompanionAgent 里永远不会 yield；
-          // 工作族 Agent (W3 D6 / W4) 才需要处理
         }
+        result = await gen.next(resolution)
       }
     } catch (err) {
       errored = true
@@ -215,6 +293,109 @@ app.whenReady().then(async () => {
   ipcMain.on('chat:abort', () => {
     chatAbort?.abort()
     chatAbort = null
+  })
+
+  // 文件选择框 —— 拖放在透明置顶窗口上不可靠，提供 100% 可用的「点击喂文件」入口。
+  // 只返回选中的路径，真正的总结仍走 file:summarize（与拖放同一条流式链路）。
+  ipcMain.handle('file:pick', async () => {
+    const win = petWindow ?? BrowserWindow.getAllWindows()[0]
+    const result = await dialog.showOpenDialog(win!, {
+      title: '喂个文件给桌宠看看',
+      properties: ['openFile'],
+      filters: [
+        {
+          name: '文本/图片',
+          extensions: [
+            'txt',
+            'md',
+            'markdown',
+            'json',
+            'csv',
+            'log',
+            'xml',
+            'yaml',
+            'yml',
+            'js',
+            'ts',
+            'tsx',
+            'jsx',
+            'py',
+            'java',
+            'go',
+            'rs',
+            'c',
+            'cpp',
+            'h',
+            'sh',
+            'sql',
+            'html',
+            'css',
+            'png',
+            'jpg',
+            'jpeg',
+            'webp',
+            'bmp',
+            'gif',
+            'tiff'
+          ]
+        },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true as const }
+    }
+    const filePath = result.filePaths[0]
+    return { canceled: false as const, path: filePath, name: basename(filePath) }
+  })
+
+  // ---------- 拖文件总结（W3 副线：文本直读 / 图片 OCR → 流式总结，复用 chat 通道） ----------
+  ipcMain.handle('file:summarize', async (event, filePath: unknown) => {
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+      return { ok: false as const, error: '无效的文件路径' }
+    }
+    if (!cachedApiKey) {
+      event.sender.send('chat:error', '尚未配置 DeepSeek API Key — 点齿轮配置')
+      return { ok: false as const, error: 'no-key' }
+    }
+
+    // 复用 chat 的打断逻辑：还在上一轮就先 abort
+    if (chatAbort) {
+      chatAbort.abort()
+      chatAbort = null
+    }
+    const ac = new AbortController()
+    chatAbort = ac
+
+    const settings = await loadSettings()
+    let errored = false
+    try {
+      await summarizeFile({
+        filePath,
+        settings,
+        apiKey: cachedApiKey,
+        signal: ac.signal,
+        emit: {
+          chunk: (t) => {
+            if (!event.sender.isDestroyed()) event.sender.send('chat:chunk', t)
+          },
+          end: () => {
+            if (!event.sender.isDestroyed()) event.sender.send('chat:end')
+          },
+          error: (msg) => {
+            errored = true
+            if (!event.sender.isDestroyed()) event.sender.send('chat:error', msg)
+          }
+        }
+      })
+    } catch (err) {
+      errored = true
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!event.sender.isDestroyed()) event.sender.send('chat:error', `总结文件时出错：${msg}`)
+    }
+
+    if (chatAbort === ac) chatAbort = null
+    return { ok: !errored }
   })
 
   // ---------- 配置 ----------
@@ -293,5 +474,7 @@ app.on('will-quit', () => {
   stopDrag()
   chatAbort?.abort()
   globalShortcut.unregisterAll()
+  void closeMcpHost()
+  void closeOcr()
   closeDb()
 })

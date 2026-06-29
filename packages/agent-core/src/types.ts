@@ -13,100 +13,104 @@
 // =====================================================================
 
 export interface ConversationMessage {
-  id: string
-  role: 'user' | 'assistant' | 'tool'
-  content: string
+  id: string;
+  role: "user" | "assistant" | "tool";
+  content: string;
   /** Unix epoch ms */
-  ts: number
+  ts: number;
   /** v2.1：tool 角色专属 */
-  toolCallId?: string
-  toolName?: string
+  toolCallId?: string;
+  toolName?: string;
 }
 
 export interface EpisodicMemory {
-  id: string
-  summary: string
+  id: string;
+  summary: string;
   /** 向量长度由 embedding provider 决定（bge-small-zh = 512 维） */
-  embedding?: readonly number[]
-  eventType?: string
-  ts: number
-  metadata?: Record<string, unknown>
+  embedding?: readonly number[];
+  eventType?: string;
+  ts: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface PersonalityState {
   /** [-1, +1] —— 安静内敛 ↔ 活泼好动 */
-  energy: number
+  energy: number;
   /** [-0.5, +1.0] —— 独立 ↔ 粘人 */
-  attachment: number
+  attachment: number;
   /** [-0.6, +0.8] —— 钝感 ↔ 高敏感 */
-  sensitivity: number
+  sensitivity: number;
 }
 
-export type GrowthStage = '初识' | '熟悉' | '亲密' | '挚友'
+export type GrowthStage = "初识" | "熟悉" | "亲密" | "挚友";
 
 export interface UserProfile {
-  nickname?: string
-  petCalling?: string
-  mbti?: string
-  importantDates?: Array<{ date: string; label: string }>
-  preferences?: Record<string, unknown>
-  pets?: Array<{ name: string; species?: string; note?: string }>
+  nickname?: string;
+  petCalling?: string;
+  mbti?: string;
+  importantDates?: Array<{ date: string; label: string }>;
+  preferences?: Record<string, unknown>;
+  pets?: Array<{ name: string; species?: string; note?: string }>;
 }
 
 // =====================================================================
 // 2. Agent —— 单个 LLM 调用单元 + 流式输出 + 工具调用挂钩
 // =====================================================================
 
-export type ToolScope = 'read' | 'write' | 'exec' | 'network'
+export type ToolScope = "read" | "write" | "exec" | "network";
 
-export type AgentFamily = 'companion' | 'utility'
+export type AgentFamily = "companion" | "utility";
 
 /** Agent 流式输出 event —— 状态机 + UI + 上层调用方都基于这一类型 */
 export type AgentEvent =
   /** 流式 token（陪伴族 & 工作族包装 tool_result 后都会发） */
-  | { kind: 'text'; text: string }
+  | { kind: "text"; text: string }
   /** 思考阶段结束、开始流式输出（用于状态机 thinking → speaking 转移） */
-  | { kind: 'thinking-end' }
+  | { kind: "thinking-end" }
   /** 工作族 LLM 决定调工具 —— 外部需要在 generator.next(resolution) 喂回结果 */
   | {
-      kind: 'tool-call'
-      agentName: string
-      serverId: string
-      toolName: string
+      kind: "tool-call";
+      agentName: string;
+      serverId: string;
+      toolName: string;
       /** 完整参数（JSON 序列化后） */
-      args: unknown
+      args: unknown;
       /** 前 200 字摘要，UI / 审计用 */
-      argsSummary: string
-      scope: ToolScope
+      argsSummary: string;
+      scope: ToolScope;
     }
   /** 整轮（含可能的多步 ReAct loop）输出完毕 */
-  | { kind: 'done' }
+  | { kind: "done" }
   /** 不可恢复错误，调用方应进 apologetic */
-  | { kind: 'error'; error: string }
+  | { kind: "error"; error: string };
 
 /** 调用方对 tool-call event 的回应（喂回 generator） */
 export type ToolResolution =
-  | { ok: true; resultSummary: string; /** LLM 上下文喂回的完整 tool message */ resultFull: string }
-  | { ok: false; error: string }
+  | {
+      ok: true;
+      resultSummary: string;
+      /** LLM 上下文喂回的完整 tool message */ resultFull: string;
+    }
+  | { ok: false; error: string };
 
 /** Agent.run() 入参 —— 把所有"读"过的上下文一次性给齐，agent 内部不再调 store */
 export interface AgentRunContext {
-  userInput: string
+  userInput: string;
   /** 最近 N 轮，含 user / assistant / tool 角色 */
-  workingMemory: readonly ConversationMessage[]
+  workingMemory: readonly ConversationMessage[];
   /** 用户画像摘要（已 LLM-summarize，长度有界） */
-  userProfileSummary: string
+  userProfileSummary: string;
   /** 向量召回 Top-K */
-  recentEpisodicMemories: readonly EpisodicMemory[]
-  personality: PersonalityState
-  growthStage: GrowthStage
-  totalInteractions: number
+  recentEpisodicMemories: readonly EpisodicMemory[];
+  personality: PersonalityState;
+  growthStage: GrowthStage;
+  totalInteractions: number;
   /** 用户配置的桌宠代号（默认"小桃"） */
-  personaName: string
+  personaName: string;
   /** 用户希望桌宠如何称呼自己（来自 settings.userNickname），注入 prompt */
-  userCalling?: string
+  userCalling?: string;
   /** 中断信号 —— 用户取消 / 应用退出时由 host 触发 */
-  signal: AbortSignal
+  signal: AbortSignal;
 }
 
 /**
@@ -130,32 +134,37 @@ export interface AgentRunContext {
  *   ```
  */
 export interface Agent {
-  readonly name: string
-  readonly family: AgentFamily
+  readonly name: string;
+  readonly family: AgentFamily;
   /** 第三个泛型参数 ToolResolution = 外部 next(value) 时传入的数据类型 */
-  run(ctx: AgentRunContext): AsyncGenerator<AgentEvent, void, ToolResolution | undefined>
+  run(
+    ctx: AgentRunContext,
+  ): AsyncGenerator<AgentEvent, void, ToolResolution | undefined>;
 }
 
 // =====================================================================
 // 3. Router —— 两级路由：一级模式分流 + 二级族内选 Agent
 // =====================================================================
 
-export type IntentMode = 'companion' | 'utility'
+export type IntentMode = "companion" | "utility";
 
 export interface RouterResult {
-  mode: IntentMode
+  mode: IntentMode;
   /** 0-1 的置信度 */
-  confidence: number
+  confidence: number;
   /** companion 模式下省略；utility 模式下指定具体 Agent name */
-  agentName?: string
+  agentName?: string;
   /** 内部 debug 用 —— 三路融合的各路打分 */
-  scores?: { llm?: number; vec?: number; keyword?: number }
+  scores?: { llm?: number; vec?: number; keyword?: number };
   /** 触发关键词 / intent 标签 */
-  intent?: string
+  intent?: string;
 }
 
 export interface Router {
-  route(userInput: string, ctx: Pick<AgentRunContext, 'workingMemory' | 'signal'>): Promise<RouterResult>
+  route(
+    userInput: string,
+    ctx: Pick<AgentRunContext, "workingMemory" | "signal">,
+  ): Promise<RouterResult>;
 }
 
 // =====================================================================
@@ -164,30 +173,37 @@ export interface Router {
 
 export interface MemoryStore {
   // ---- 工作记忆 ----
-  appendMessage(msg: Omit<ConversationMessage, 'id'>): Promise<ConversationMessage>
-  recentMessages(n: number): Promise<readonly ConversationMessage[]>
+  appendMessage(
+    msg: Omit<ConversationMessage, "id">,
+  ): Promise<ConversationMessage>;
+  recentMessages(n: number): Promise<readonly ConversationMessage[]>;
 
   // ---- 情景记忆 ----
-  upsertEpisodicMemory(memory: Omit<EpisodicMemory, 'id'>): Promise<EpisodicMemory>
-  recallEpisodicMemories(query: string, topK: number): Promise<readonly EpisodicMemory[]>
+  upsertEpisodicMemory(
+    memory: Omit<EpisodicMemory, "id">,
+  ): Promise<EpisodicMemory>;
+  recallEpisodicMemories(
+    query: string,
+    topK: number,
+  ): Promise<readonly EpisodicMemory[]>;
 
   // ---- 用户画像 ----
-  getUserProfile(): Promise<UserProfile>
-  updateUserProfile(patch: Partial<UserProfile>): Promise<UserProfile>
+  getUserProfile(): Promise<UserProfile>;
+  updateUserProfile(patch: Partial<UserProfile>): Promise<UserProfile>;
 
   // ---- 性格状态 ----
-  getPersonality(): Promise<PersonalityState>
-  updatePersonality(next: PersonalityState): Promise<void>
-  incrementInteractions(): Promise<number>
-  getTotalInteractions(): Promise<number>
+  getPersonality(): Promise<PersonalityState>;
+  updatePersonality(next: PersonalityState): Promise<void>;
+  incrementInteractions(): Promise<number>;
+  getTotalInteractions(): Promise<number>;
 
   // ---- 演化日志 ----
   appendEvolutionLog(entry: {
-    ts: number
-    delta: PersonalityState
-    stateAfter: PersonalityState
-    triggerMsgSnippet: string
-  }): Promise<void>
+    ts: number;
+    delta: PersonalityState;
+    stateAfter: PersonalityState;
+    triggerMsgSnippet: string;
+  }): Promise<void>;
 }
 
 // =====================================================================
@@ -195,31 +211,46 @@ export interface MemoryStore {
 // =====================================================================
 
 export interface PromptBuilderInput {
-  personaName: string
-  userCalling?: string
-  personality: PersonalityState
-  growthStage: GrowthStage
-  totalInteractions: number
-  userProfile: UserProfile
+  personaName: string;
+  userCalling?: string;
+  personality: PersonalityState;
+  growthStage: GrowthStage;
+  totalInteractions: number;
+  userProfile: UserProfile;
   /** 已经 LLM-summarize 过的画像文本（长度有界，安全注入 prompt） */
-  userProfileSummary: string
-  recentEpisodicMemories: readonly EpisodicMemory[]
+  userProfileSummary: string;
+  recentEpisodicMemories: readonly EpisodicMemory[];
   /** 工作记忆 —— prompt 拼接前会被截到 max N 轮 */
-  workingMemory: readonly ConversationMessage[]
-  userInput: string
+  workingMemory: readonly ConversationMessage[];
+  userInput: string;
 }
 
 export interface ChatCompletionMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string
-  /** tool 角色专属（OpenAI / DeepSeek FC 风格） */
-  toolCallId?: string
-  name?: string
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  /** tool 角色专属（OpenAI / DeepSeek FC 风格）：对应被回喂的 tool_call id */
+  toolCallId?: string;
+  name?: string;
+  /**
+   * assistant 角色专属（function calling）：LLM 这一轮请求调用的工具。
+   * 回喂下一轮时必须带上，DeepSeek 才认得后续 role=tool 消息的归属。
+   */
+  toolCalls?: FunctionToolCall[];
+}
+
+/** function calling —— LLM 请求的一次工具调用（DeepSeek / OpenAI 兼容） */
+export interface FunctionToolCall {
+  /** tool_call id，回喂 tool 结果时用 */
+  id: string;
+  /** 命名空间化的工具名：`${serverId}__${toolName}` */
+  name: string;
+  /** 参数 JSON 字符串（LLM 原样产出，解析交给调用方） */
+  arguments: string;
 }
 
 export interface PromptBuilder {
   /** 仅 system prompt（含人格底色 + 性格修饰 + 记忆注入） */
-  composeSystemPrompt(input: PromptBuilderInput): string
+  composeSystemPrompt(input: PromptBuilderInput): string;
   /** 完整 messages 数组（system + 工作记忆裁剪后 + 当前 user 输入） */
-  composeMessages(input: PromptBuilderInput): ChatCompletionMessage[]
+  composeMessages(input: PromptBuilderInput): ChatCompletionMessage[];
 }

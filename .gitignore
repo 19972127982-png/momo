@@ -38,3 +38,6 @@ release/
 *.exe
 *.AppImage
 *.snap
+
+# Tesseract OCR 语言包（首次使用时由 tesseract.js 自动下载到工作目录）
+*.traineddata

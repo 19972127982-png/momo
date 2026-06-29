@@ -21,35 +21,33 @@ export type {
   // PromptBuilder
   PromptBuilderInput,
   ChatCompletionMessage,
-  PromptBuilder
-} from './types'
+  FunctionToolCall,
+  PromptBuilder,
+} from "./types";
 
 // v2.1 D2 NEW —— 双层 prompt + CompanionAgent + LLM 客户端抽象
 export type {
   ChatCompletionStreamOptions,
   ChatCompletionStreamChunk,
-  ChatCompletionClient
-} from './chat-completion-client'
+  ChatCompletionClient,
+} from "./chat-completion-client";
 
 export {
   bucketDimension,
   describePersonality,
   formatPersonalityLines,
   type DimensionLevel,
-  type PersonalityDescriptionLines
-} from './personality-mapper'
+  type PersonalityDescriptionLines,
+} from "./personality-mapper";
 
-export { deriveGrowthStage, describeGrowthStage } from './growth-stage'
+export { deriveGrowthStage, describeGrowthStage } from "./growth-stage";
 
 export {
   DefaultPromptBuilder,
-  type DefaultPromptBuilderOptions
-} from './prompt-builder'
+  type DefaultPromptBuilderOptions,
+} from "./prompt-builder";
 
-export {
-  CompanionAgent,
-  type CompanionAgentOptions
-} from './companion-agent'
+export { CompanionAgent, type CompanionAgentOptions } from "./companion-agent";
 
 // v2.1 D3 NEW —— 用户画像提取纯逻辑（触发 / 解析 / 合并 / 摘要）
 export {
@@ -59,8 +57,8 @@ export {
   mergeUserProfile,
   profilePatchIsEmpty,
   summarizeUserProfile,
-  type ShouldExtractInput
-} from './profile-extraction'
+  type ShouldExtractInput,
+} from "./profile-extraction";
 
 // v2.1 D4 NEW —— 情景记忆：摘要 Agent 纯逻辑 + 关键词召回
 export {
@@ -68,14 +66,14 @@ export {
   buildSummaryPrompt,
   parseSummaryCards,
   type ShouldSummarizeInput,
-  type SummaryCard
-} from './episodic-summary'
+  type SummaryCard,
+} from "./episodic-summary";
 
 export {
   tokenize,
   scoreEpisodicRecall,
-  type RecallScored
-} from './episodic-recall'
+  type RecallScored,
+} from "./episodic-recall";
 
 // v2.1 D5 NEW —— 性格演化引擎纯逻辑（prompt / 解析 / clamp 应用）
 export {
@@ -86,5 +84,39 @@ export {
   personalityL2,
   PERSONALITY_BOUNDS,
   MAX_DELTA_PER_TURN,
-  type PersonalityDelta
-} from './personality-evolution'
+  type PersonalityDelta,
+} from "./personality-evolution";
+
+// v2.1 D6 NEW —— 工作族 Agent：function calling 客户端 + 一级路由 + FileAgent
+export type {
+  FunctionTool,
+  FunctionCallingOptions,
+  FunctionCallingResult,
+  FunctionCallingClient,
+} from "./function-calling-client";
+
+export {
+  namespaceToolName,
+  parseNamespacedToolName,
+  type ParsedToolName,
+} from "./fc-naming";
+
+export {
+  classifyIntentByKeywords,
+  KeywordIntentRouter,
+  type KeywordIntentResult,
+} from "./intent-router";
+
+export { FileAgent, type FileAgentOptions } from "./file-agent";
+
+// 拖文件总结纯逻辑（类型判定 / 总结 prompt / 截断 / 边界提示）
+export {
+  classifyDroppedFile,
+  truncateForSummary,
+  buildFileSummaryMessages,
+  emptyImageTextReply,
+  unsupportedFileReply,
+  SUMMARY_MAX_CHARS,
+  type DroppedFileKind,
+  type FileSummaryInput,
+} from "./file-summary";

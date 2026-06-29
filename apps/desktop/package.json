@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@echopet/agent-core": "workspace:*",
+    "@echopet/mcp-host": "workspace:*",
     "@echopet/state-machine": "workspace:*",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
@@ -29,13 +30,14 @@
     "better-sqlite3": "^12.11.1",
     "pixi-live2d-display": "^0.4.0",
     "pixi.js": "~6.5.10",
+    "tesseract.js": "^7.0.0",
     "xstate": "^5.32.2"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.4",
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
     "@electron-toolkit/eslint-config-ts": "^3.1.0",
     "@electron-toolkit/tsconfig": "^2.0.0",
+    "@electron/rebuild": "^4.0.4",
     "@types/node": "^22.19.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
