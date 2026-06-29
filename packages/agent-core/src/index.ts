@@ -76,3 +76,15 @@ export {
   scoreEpisodicRecall,
   type RecallScored
 } from './episodic-recall'
+
+// v2.1 D5 NEW —— 性格演化引擎纯逻辑（prompt / 解析 / clamp 应用）
+export {
+  buildEvolutionPrompt,
+  parsePersonalityDelta,
+  deltaIsNegligible,
+  applyPersonalityDelta,
+  personalityL2,
+  PERSONALITY_BOUNDS,
+  MAX_DELTA_PER_TURN,
+  type PersonalityDelta
+} from './personality-evolution'

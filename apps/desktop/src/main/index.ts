@@ -7,6 +7,7 @@ import { getDb, closeDb } from './db/connection'
 import { SqliteMemoryStore } from './memory/sqliteMemoryStore'
 import { maybeExtractProfile } from './memory/profileExtractor'
 import { maybeSummarize } from './memory/summarizer'
+import { maybeEvolvePersonality } from './memory/personalityEngine'
 import type { AppSettings } from '../shared/ipcTypes'
 import {
   CompanionAgent,
@@ -89,9 +90,9 @@ app.whenReady().then(async () => {
     stopDrag()
   })
 
-  // ---------- 陪伴对话主路径（W3 D3/D4：CompanionAgent + SQLite 三层记忆） ----------
+  // ---------- 陪伴对话主路径（W3 D3/D4/D5：CompanionAgent + SQLite 三层记忆） ----------
   // 流程：注入工作记忆 + 用户画像 + 性格 + 情景记忆召回 → CompanionAgent 流式
-  //   → 落库 + 异步画像提取 + 异步情景摘要。性格 delta 演化 D5。
+  //   → 落库 + 异步画像提取 + 异步情景摘要 + 异步性格演化（写 evolution_log）。
   ipcMain.handle('chat:send', async (event, text: unknown) => {
     if (typeof text !== 'string' || !text.trim()) {
       return { ok: false as const, error: '空消息' }
@@ -193,6 +194,15 @@ app.whenReady().then(async () => {
 
       // 异步情景记忆摘要（每累计 N 条新消息提炼一次事件卡片，独立 signal）
       void maybeSummarize({
+        store,
+        getApiKey: () => cachedApiKey,
+        signal: new AbortController().signal
+      })
+
+      // 异步性格演化（每轮一次 LLM delta → clamp 并入向量 + 写 evolution_log）
+      void maybeEvolvePersonality({
+        userMsg: userInput,
+        assistantReply: reply,
         store,
         getApiKey: () => cachedApiKey,
         signal: new AbortController().signal
