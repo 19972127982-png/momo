@@ -9,8 +9,18 @@ import {
 } from "../src/skills";
 
 describe("BUILTIN_SKILLS", () => {
-  it("当前落 2 个内置包（文件管家 + 裸装）", () => {
-    expect(BUILTIN_SKILLS.map((s) => s.id)).toEqual(["file-butler", "bare"]);
+  it("当前落 3 个内置包（文件管家 + 系统助手 + 裸装）", () => {
+    expect(BUILTIN_SKILLS.map((s) => s.id)).toEqual([
+      "file-butler",
+      "system-helper",
+      "bare",
+    ]);
+  });
+
+  it("系统助手默认启用、挂 system", () => {
+    const sh = getSkill("system-helper");
+    expect(sh?.servers).toEqual(["system"]);
+    expect(sh?.defaultEnabled).toBe(true);
   });
 
   it("文件管家默认启用、挂 filesystem", () => {

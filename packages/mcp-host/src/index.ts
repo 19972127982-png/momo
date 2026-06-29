@@ -2,6 +2,8 @@ export type {
   McpServerConfig,
   McpToolDescriptor,
   McpInvokeResult,
+  LocalToolDef,
+  LocalServerConfig,
 } from "./types";
 
 export {
@@ -13,3 +15,4 @@ export {
 } from "./bridge";
 
 export { McpHost } from "./host";
+export type { ServerInfo } from "./host";

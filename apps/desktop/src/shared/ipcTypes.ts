@@ -50,3 +50,40 @@ export interface SkillView {
   servers: string[]
   promptAddon: string
 }
+
+/** W4 D6：Tools tab —— 一个内置 MCP server 的健康状态 */
+export interface ServerStatusView {
+  id: string
+  label: string
+  capability: string
+  agent: string
+  kind: 'stdio' | 'local'
+  health: 'running' | 'failed' | 'stopped'
+  toolCount: number
+}
+
+/** W4 D6：Permissions tab —— 一条永久授权 */
+export interface GrantView {
+  id: number
+  scope: 'read' | 'write' | 'exec' | 'network'
+  targetPattern: string
+  agentName?: string
+  serverId?: string
+  grantedAt: number
+  expiresAt: number | null
+  revokedAt: number | null
+}
+
+/** W4 D6：Permissions tab —— 一条工具调用审计 */
+export interface ToolLogView {
+  id: number
+  ts: number
+  agentName?: string
+  serverId?: string
+  toolName: string
+  argsSummary?: string
+  resultSummary?: string
+  ok: boolean
+  latencyMs?: number
+  deniedReason?: string
+}

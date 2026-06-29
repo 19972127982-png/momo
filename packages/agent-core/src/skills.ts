@@ -11,7 +11,7 @@
  */
 import type { ToolScope } from "./types";
 
-export type SkillId = "file-butler" | "bare";
+export type SkillId = "file-butler" | "system-helper" | "bare";
 
 export interface SkillDef {
   id: SkillId;
@@ -33,6 +33,15 @@ export const BUILTIN_SKILLS: readonly SkillDef[] = [
     servers: ["filesystem"],
     promptAddon:
       "你可以帮 ta 整理桌面文件（列出、读取、新建、归类、重命名、移动）。写操作会先弹给 ta 确认，确认后直接动手即可。",
+    defaultScopes: ["read"],
+    defaultEnabled: true,
+  },
+  {
+    id: "system-helper",
+    name: "系统助手",
+    servers: ["system"],
+    promptAddon:
+      "你可以帮 ta 读取/写入剪贴板、发系统通知提醒。写剪贴板和发通知会先弹给 ta 确认。",
     defaultScopes: ["read"],
     defaultEnabled: true,
   },

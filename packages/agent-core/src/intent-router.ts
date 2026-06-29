@@ -117,6 +117,17 @@ export function classifyIntentByKeywords(
       };
     }
   }
+  // 系统类（剪贴板 / 通知）—— 同样判 utility，二级路由再落到 SystemAgent
+  for (const re of SYSTEM_PATTERNS) {
+    if (re.test(text)) {
+      return {
+        mode: "utility",
+        confidence: 0.82,
+        agentName: "SystemAgent",
+        intent: "system",
+      };
+    }
+  }
   return { mode: "companion", confidence: 0.6 };
 }
 
@@ -149,6 +160,7 @@ const WEAK_TASK_HINTS: readonly RegExp[] = [
   /文件|文件夹|目录|桌面|desktop|txt|md|文档|笔记/i,
   /写|读|看|列|找|搜|建|创建|新建|删|移|改|存|保存|打开|整理|归类|重命名|改名/,
   /工具|帮我弄|帮我做|帮我处理|操作/,
+  /剪贴板|剪切板|clipboard|通知|提醒|复制|拷贝|notify|notification/i,
 ];
 
 export function hasWeakTaskHint(userInput: string): boolean {

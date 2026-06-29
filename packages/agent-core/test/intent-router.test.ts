@@ -92,6 +92,21 @@ describe("classifyIntentByKeywords", () => {
   });
 });
 
+describe("classifyIntentByKeywords · 系统类", () => {
+  it("「把这段复制到剪贴板」→ utility / SystemAgent", () => {
+    const r = classifyIntentByKeywords("把这段复制到剪贴板");
+    expect(r.mode).toBe("utility");
+    expect(r.agentName).toBe("SystemAgent");
+    expect(r.intent).toBe("system");
+  });
+
+  it("「弹个通知提醒我」→ utility / SystemAgent", () => {
+    expect(classifyIntentByKeywords("弹个通知提醒我").agentName).toBe(
+      "SystemAgent",
+    );
+  });
+});
+
 describe("KeywordIntentRouter", () => {
   const router = new KeywordIntentRouter();
   const ctx = { workingMemory: [], signal: new AbortController().signal };

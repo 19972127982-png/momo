@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, globalShortcut, screen, safeStorage, dialog } from 'electron'
 import { basename } from 'node:path'
+import { writeFile } from 'node:fs/promises'
 import { createPetWindow } from './window'
 import { createDeepSeekClient } from './companionClient'
 import { loadApiKey, saveApiKey, clearApiKey, loadSettings, saveSettings } from './configStore'
@@ -11,7 +12,16 @@ import { maybeSummarize } from './memory/summarizer'
 import { maybeEvolvePersonality } from './memory/personalityEngine'
 import { createDeepSeekFcClient } from './fileAgentClient'
 import { createLlmIntentClassifier } from './intentClassifier'
-import { getMcpHost, ensureServers, closeMcpHost, desktopDir } from './mcp/bootstrap'
+import {
+  getMcpHost,
+  ensureServers,
+  closeMcpHost,
+  desktopDir,
+  serversStatus,
+  restartServer,
+  type ServerStatusView
+} from './mcp/bootstrap'
+import type { BuiltinServerId } from './mcp/serverRegistry'
 import { serversForAgent } from './mcp/serverRegistry'
 import type { McpHost } from '@echopet/mcp-host'
 import { PermissionGate, extractTarget } from './permission/gate'
@@ -214,13 +224,26 @@ app.whenReady().then(async () => {
         signal: ac.signal
       }
       const skillAddon = skillManager?.promptAddon() ?? ''
-      const baseHint = `用户的桌面目录绝对路径是：${desktopDir()}\n读写文件时请用这个绝对路径或它的子路径，不要用 ~ 或相对路径。`
-      agent = new FileAgent({
-        client: fcClient,
-        getTools: () => host.listFunctionTools(serverIds),
-        getScope: (n: string) => host.scopeOf(n),
-        systemHint: skillAddon ? `${baseHint}\n\n${skillAddon}` : baseHint
-      })
+      if (pickedAgent === 'SystemAgent') {
+        agent = new FileAgent({
+          client: fcClient,
+          getTools: () => host.listFunctionTools(serverIds),
+          getScope: (n: string) => host.scopeOf(n),
+          name: 'SystemAgent',
+          domain: '跟剪贴板 / 系统通知有关',
+          capabilities:
+            '你能读取和写入系统剪贴板，也能发送桌面通知来提醒 ta。需要时直接调用对应工具。',
+          systemHint: skillAddon || undefined
+        })
+      } else {
+        const baseHint = `用户的桌面目录绝对路径是：${desktopDir()}\n读写文件时请用这个绝对路径或它的子路径，不要用 ~ 或相对路径。`
+        agent = new FileAgent({
+          client: fcClient,
+          getTools: () => host.listFunctionTools(serverIds),
+          getScope: (n: string) => host.scopeOf(n),
+          systemHint: skillAddon ? `${baseHint}\n\n${skillAddon}` : baseHint
+        })
+      }
     } else {
       const [vector, totalInteractions, workingMemory, profile, episodic] = await Promise.all([
         store.getPersonality(),
@@ -563,6 +586,54 @@ app.whenReady().then(async () => {
     }
     const ok = skillManager?.setEnabled(id, enabled) ?? false
     return { ok }
+  })
+
+  // ---------- W4 D6：Tools（MCP server 健康/重启） ----------
+  ipcMain.handle('tools:list-servers', (): ServerStatusView[] => serversStatus())
+  ipcMain.handle('tools:restart-server', async (_e, id: unknown) => {
+    if (typeof id !== 'string') return { ok: false as const, error: '参数错误' }
+    try {
+      const ready = await restartServer(id as BuiltinServerId)
+      return { ok: ready, error: ready ? undefined : '重启后仍不可用' }
+    } catch (err) {
+      return { ok: false as const, error: (err as Error).message }
+    }
+  })
+
+  // ---------- W4 D6：Permissions（授权撤销 + 审计） ----------
+  ipcMain.handle('perm:list-grants', () => permissionGate?.store.listPersistent() ?? [])
+  ipcMain.handle('perm:revoke', (_e, id: unknown) => {
+    if (typeof id !== 'number') return { ok: false as const, error: '参数错误' }
+    const ok = permissionGate?.store.revoke(id) ?? false
+    return { ok }
+  })
+  ipcMain.handle('perm:revoke-all', () => {
+    const n = permissionGate?.store.revokeAll() ?? 0
+    return { ok: true as const, count: n }
+  })
+  ipcMain.handle('perm:list-logs', (_e, query: unknown) => {
+    const q = (query ?? {}) as { agentName?: string; limit?: number }
+    return (
+      toolLogger?.recent({
+        agentName: typeof q.agentName === 'string' && q.agentName ? q.agentName : undefined,
+        limit: typeof q.limit === 'number' ? q.limit : 200
+      }) ?? []
+    )
+  })
+  ipcMain.handle('perm:export-logs', async () => {
+    const logs = toolLogger?.recent({ limit: 5000 }) ?? []
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: '导出工具调用审计',
+      defaultPath: `echopet-audit-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (canceled || !filePath) return { ok: false as const, error: 'cancelled' }
+    try {
+      await writeFile(filePath, JSON.stringify(logs, null, 2), 'utf-8')
+      return { ok: true as const, path: filePath, count: logs.length }
+    } catch (err) {
+      return { ok: false as const, error: (err as Error).message }
+    }
   })
 
   globalShortcut.register('CommandOrControl+Shift+Q', () => {

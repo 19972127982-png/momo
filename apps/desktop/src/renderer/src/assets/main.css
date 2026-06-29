@@ -591,6 +591,269 @@ canvas {
   transform: translateX(16px);
 }
 
+/* ===== 设置 · 工具服务卡片（W4 D6） ===== */
+.server-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.server-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.015);
+}
+
+.server-card__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.server-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.server-card__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.8);
+}
+
+.server-card__desc {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.5);
+  margin-top: 2px;
+}
+
+.server-card__meta {
+  font-size: 10px;
+  color: rgba(0, 0, 0, 0.4);
+  margin-top: 4px;
+}
+
+.server-badge {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.server-badge--running {
+  color: #1a7f4b;
+  background: rgba(26, 127, 75, 0.12);
+}
+
+.server-badge--failed {
+  color: #b23b3b;
+  background: rgba(178, 59, 59, 0.12);
+}
+
+.server-badge--stopped {
+  color: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.server-card__btn {
+  flex-shrink: 0;
+  border: 1px solid rgba(170, 68, 102, 0.4);
+  background: transparent;
+  color: rgba(170, 68, 102, 0.95);
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.server-card__btn:hover:not(:disabled) {
+  background: rgba(170, 68, 102, 0.08);
+}
+
+.server-card__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ===== 设置 · 权限（授权 + 审计）（W4 D6） ===== */
+.perm-link-btn {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: rgba(170, 68, 102, 0.9);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.perm-link-btn:hover {
+  text-decoration: underline;
+}
+
+.perm-select {
+  margin-left: auto;
+  font-size: 11px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  padding: 2px 6px;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.perm-select + .perm-link-btn {
+  margin-left: 10px;
+}
+
+.grant-list,
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.grant-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.02);
+  font-size: 12px;
+}
+
+.grant-row--revoked,
+.grant-row--expired {
+  opacity: 0.5;
+}
+
+.grant-row__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.grant-scope {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.grant-scope--read {
+  color: #1a7f4b;
+  background: rgba(26, 127, 75, 0.12);
+}
+
+.grant-scope--write,
+.grant-scope--exec,
+.grant-scope--network {
+  color: #aa4466;
+  background: rgba(170, 68, 102, 0.12);
+}
+
+.grant-row__target {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.grant-row__meta {
+  font-size: 10px;
+  color: rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+}
+
+.grant-row__revoke {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: #b23b3b;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.grant-row__revoke:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.log-row {
+  display: flex;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.log-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.log-dot--ok {
+  background: #1a7f4b;
+}
+
+.log-dot--fail {
+  background: #d08a1a;
+}
+
+.log-dot--denied {
+  background: #b23b3b;
+}
+
+.log-row__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.log-row__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.log-row__tool {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.75);
+}
+
+.log-row__time {
+  font-size: 10px;
+  color: rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+}
+
+.log-row__detail {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.5);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.perm-notice {
+  margin-top: 8px;
+  color: rgba(170, 68, 102, 0.9);
+}
+
 .config-dialog__field {
   display: grid;
   grid-template-columns: 56px 1fr;

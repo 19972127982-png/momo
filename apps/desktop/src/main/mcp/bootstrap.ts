@@ -49,7 +49,11 @@ export async function ensureServers(
     const def = getServerDef(id)
     if (!def) continue
     try {
-      await h.register(def.buildConfig())
+      if (def.kind === 'local') {
+        h.registerLocal(def.buildLocal())
+      } else {
+        await h.register(def.buildConfig())
+      }
       ready.push(id)
     } catch (err) {
       failedServers.add(id)
@@ -57,6 +61,49 @@ export async function ensureServers(
     }
   }
   return ready
+}
+
+export type ServerHealth = 'running' | 'failed' | 'stopped'
+
+export interface ServerStatusView {
+  id: BuiltinServerId
+  label: string
+  capability: string
+  agent: string
+  kind: 'stdio' | 'local'
+  health: ServerHealth
+  toolCount: number
+}
+
+/** Tools tab：所有内置 server 的当前状态（已启动 / 启动失败 / 未启动）。 */
+export function serversStatus(): ServerStatusView[] {
+  const infoById = new Map((host?.listServers() ?? []).map((s) => [s.id, s]))
+  return BUILTIN_SERVERS.map((def) => {
+    const info = infoById.get(def.id)
+    const health: ServerHealth = info
+      ? 'running'
+      : failedServers.has(def.id)
+        ? 'failed'
+        : 'stopped'
+    return {
+      id: def.id,
+      label: def.label,
+      capability: def.capability,
+      agent: def.agent,
+      kind: def.kind,
+      health,
+      toolCount: info?.toolCount ?? 0
+    }
+  })
+}
+
+/** Tools tab：重启单个 server（注销 + 清失败标记 + 重新拉起）。返回是否就绪。 */
+export async function restartServer(id: BuiltinServerId): Promise<boolean> {
+  const h = await getMcpHost()
+  await h.unregister(id)
+  failedServers.delete(id)
+  const ready = await ensureServers([id])
+  return ready.includes(id)
 }
 
 /** 某 server 是否处于「曾尝试但失败」状态（chat 层做降级文案用）。 */

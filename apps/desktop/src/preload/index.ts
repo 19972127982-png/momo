@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import type { AppSettings, PersonalitySnapshot, SkillView } from '../shared/ipcTypes'
+import type {
+  AppSettings,
+  GrantView,
+  PersonalitySnapshot,
+  ServerStatusView,
+  SkillView,
+  ToolLogView
+} from '../shared/ipcTypes'
 
 type Unsubscribe = () => void
 
@@ -73,6 +80,21 @@ const echopet = {
     list: (): Promise<SkillView[]> => ipcRenderer.invoke('skills:list'),
     setEnabled: (id: string, enabled: boolean): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('skills:set-enabled', id, enabled)
+  },
+  tools: {
+    listServers: (): Promise<ServerStatusView[]> => ipcRenderer.invoke('tools:list-servers'),
+    restartServer: (id: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('tools:restart-server', id)
+  },
+  permissions: {
+    listGrants: (): Promise<GrantView[]> => ipcRenderer.invoke('perm:list-grants'),
+    revoke: (id: number): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('perm:revoke', id),
+    revokeAll: (): Promise<{ ok: boolean; count: number }> => ipcRenderer.invoke('perm:revoke-all'),
+    listLogs: (query?: { agentName?: string; limit?: number }): Promise<ToolLogView[]> =>
+      ipcRenderer.invoke('perm:list-logs', query ?? {}),
+    exportLogs: (): Promise<{ ok: boolean; path?: string; count?: number; error?: string }> =>
+      ipcRenderer.invoke('perm:export-logs')
   }
 }
 

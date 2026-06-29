@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AppSettings, PersonalitySnapshot } from '../../../shared/ipcTypes'
 import SkillsPanel from './settings/SkillsPanel'
+import ToolsPanel from './settings/ToolsPanel'
+import PermissionsPanel from './settings/PermissionsPanel'
 
-type SettingsTab = 'basic' | 'skills'
+type SettingsTab = 'basic' | 'skills' | 'tools' | 'permissions'
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'basic', label: '基础' },
-  { id: 'skills', label: '技能' }
+  { id: 'skills', label: '技能' },
+  { id: 'tools', label: '工具' },
+  { id: 'permissions', label: '权限' }
 ]
 
 interface ConfigDialogProps {
@@ -148,6 +152,8 @@ function ConfigDialog({
         </div>
 
         {tab === 'skills' && <SkillsPanel visible={visible} />}
+        {tab === 'tools' && <ToolsPanel visible={visible} />}
+        {tab === 'permissions' && <PermissionsPanel visible={visible} />}
 
         {tab === 'basic' && (
           <>

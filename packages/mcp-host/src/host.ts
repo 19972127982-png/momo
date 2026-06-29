@@ -20,6 +20,8 @@ import {
   type ToolScope,
 } from "@echopet/agent-core";
 import type {
+  LocalServerConfig,
+  LocalToolDef,
   McpInvokeResult,
   McpServerConfig,
   McpToolDescriptor,
@@ -39,6 +41,19 @@ interface RegisteredServer {
   tools: McpToolDescriptor[];
 }
 
+interface LocalServer {
+  id: string;
+  tools: McpToolDescriptor[];
+  defs: Map<string, LocalToolDef>;
+}
+
+/** Tools tab 用：一个已注册 server 的概览（类型 + 工具数）。 */
+export interface ServerInfo {
+  id: string;
+  kind: "stdio" | "local";
+  toolCount: number;
+}
+
 /** 过滤掉值为 undefined 的环境变量（StdioClientTransport 的 env 不接受 undefined） */
 function cleanEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   const out: Record<string, string> = {};
@@ -50,6 +65,7 @@ function cleanEnv(env: NodeJS.ProcessEnv): Record<string, string> {
 
 export class McpHost {
   private servers = new Map<string, RegisteredServer>();
+  private localServers = new Map<string, LocalServer>();
 
   /** 启动并连接一个 MCP server，缓存其工具列表。失败抛错（调用方决定降级）。 */
   async register(config: McpServerConfig): Promise<void> {
@@ -82,8 +98,50 @@ export class McpHost {
     this.servers.set(config.id, { config, client, transport, tools });
   }
 
+  /** 注册一个进程内（local）server：工具是内联 handler，无子进程，不会失败。 */
+  registerLocal(config: LocalServerConfig): void {
+    if (this.localServers.has(config.id) || this.servers.has(config.id)) return;
+    const defs = new Map<string, LocalToolDef>();
+    const tools: McpToolDescriptor[] = [];
+    for (const t of config.tools) {
+      defs.set(t.name, t);
+      tools.push({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+      });
+    }
+    this.localServers.set(config.id, { id: config.id, tools, defs });
+  }
+
   isRegistered(serverId: string): boolean {
-    return this.servers.has(serverId);
+    return this.servers.has(serverId) || this.localServers.has(serverId);
+  }
+
+  /** 关闭并注销单个 server（Tools tab 重启用）。幂等。 */
+  async unregister(serverId: string): Promise<void> {
+    const local = this.localServers.get(serverId);
+    if (local) {
+      this.localServers.delete(serverId);
+      return;
+    }
+    const stdio = this.servers.get(serverId);
+    if (stdio) {
+      this.servers.delete(serverId);
+      await stdio.client.close().catch(() => {});
+    }
+  }
+
+  /** 已注册 server 概览（Tools tab）。 */
+  listServers(): ServerInfo[] {
+    const out: ServerInfo[] = [];
+    for (const [id, s] of this.servers) {
+      out.push({ id, kind: "stdio", toolCount: s.tools.length });
+    }
+    for (const [id, s] of this.localServers) {
+      out.push({ id, kind: "local", toolCount: s.tools.length });
+    }
+    return out;
   }
 
   /**
@@ -98,12 +156,18 @@ export class McpHost {
       if (filter && !filter.has(id)) continue;
       for (const t of s.tools) out.push(mcpToolToFunctionTool(t, id));
     }
+    for (const [id, s] of this.localServers) {
+      if (filter && !filter.has(id)) continue;
+      for (const t of s.tools) out.push(mcpToolToFunctionTool(t, id));
+    }
     return out;
   }
 
-  /** 命名空间工具名 → scope（server 配置 defaultScope 优先，否则按名字推断） */
+  /** 命名空间工具名 → scope（local 工具用其声明的 scope；stdio 用 defaultScope 或按名推断） */
   scopeOf(fcName: string): ToolScope {
     const { serverId, toolName } = parseNamespacedToolName(fcName);
+    const local = this.localServers.get(serverId);
+    if (local) return local.defs.get(toolName)?.scope ?? inferScope(toolName);
     const s = this.servers.get(serverId);
     return s?.config.defaultScope ?? inferScope(toolName);
   }
@@ -111,6 +175,23 @@ export class McpHost {
   /** 执行一次工具调用。不抛异常 —— 失败走 McpInvokeResult.error。 */
   async invoke(fcName: string, args: unknown): Promise<McpInvokeResult> {
     const { serverId, toolName } = parseNamespacedToolName(fcName);
+
+    const local = this.localServers.get(serverId);
+    if (local) {
+      const def = local.defs.get(toolName);
+      if (!def) return { ok: false, error: `未知的工具：${fcName}` };
+      try {
+        const text = await def.handler((args ?? {}) as Record<string, unknown>);
+        return {
+          ok: true,
+          resultSummary: summarizeToolResult(text),
+          resultFull: text,
+        };
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
+      }
+    }
+
     const server = this.servers.get(serverId);
     if (!server) return { ok: false, error: `未知的 MCP server：${serverId}` };
 
@@ -137,6 +218,7 @@ export class McpHost {
   async close(): Promise<void> {
     const all = [...this.servers.values()];
     this.servers.clear();
+    this.localServers.clear();
     await Promise.allSettled(all.map((s) => s.client.close()));
   }
 }
