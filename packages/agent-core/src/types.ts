@@ -103,7 +103,7 @@ export interface AgentRunContext {
   totalInteractions: number
   /** 用户配置的桌宠代号（默认"小桃"） */
   personaName: string
-  /** 用户对桌宠的称呼，prompt 中用 */
+  /** 用户希望桌宠如何称呼自己（来自 settings.userNickname），注入 prompt */
   userCalling?: string
   /** 中断信号 —— 用户取消 / 应用退出时由 host 触发 */
   signal: AbortSignal

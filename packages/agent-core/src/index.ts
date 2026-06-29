@@ -50,3 +50,14 @@ export {
   CompanionAgent,
   type CompanionAgentOptions
 } from './companion-agent'
+
+// v2.1 D3 NEW —— 用户画像提取纯逻辑（触发 / 解析 / 合并 / 摘要）
+export {
+  shouldExtractProfile,
+  buildProfileExtractionPrompt,
+  parseProfileExtraction,
+  mergeUserProfile,
+  profilePatchIsEmpty,
+  summarizeUserProfile,
+  type ShouldExtractInput
+} from './profile-extraction'

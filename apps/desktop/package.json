@@ -14,7 +14,7 @@
     "start": "env -u ELECTRON_RUN_AS_NODE electron-vite preview",
     "dev": "env -u ELECTRON_RUN_AS_NODE electron-vite dev",
     "build": "pnpm run typecheck && electron-vite build",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "electron-rebuild -f -o better-sqlite3",
     "build:unpack": "pnpm run build && electron-builder --dir",
     "build:win": "pnpm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
@@ -26,11 +26,13 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@xstate/react": "^6.1.0",
+    "better-sqlite3": "^12.11.1",
     "pixi-live2d-display": "^0.4.0",
     "pixi.js": "~6.5.10",
     "xstate": "^5.32.2"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
     "@electron-toolkit/eslint-config-ts": "^3.1.0",
     "@electron-toolkit/tsconfig": "^2.0.0",

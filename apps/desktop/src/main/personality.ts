@@ -1,32 +1,21 @@
 import type { PersonalitySnapshot } from '../shared/ipcTypes'
+import { deriveGrowthStage, type PersonalityState } from '@echopet/agent-core'
 
 /**
- * W2 阶段的性格引擎占位 —— 返回静态 mock。
- * W3 接入真实演化引擎（PRD §4.5）时：
- *   - 把 MOCK 换成 SQLite `pet_personality` 表的 read
- *   - delta 计算流程见 PRD §4.5.4
+ * 把性格向量 + 互动总数组装成对外快照（供设置面板 / 状态条展示）。
+ *
+ * W2 时这里返回静态 mock；W3 D3 起真实数据来自 SQLite `pet_personality`，
+ * 本文件退化为纯组装函数，由 index.ts 从 SqliteMemoryStore 取数后调用。
  */
-
-const MOCK = {
-  energy: 0.62,
-  attachment: 0.78,
-  sensitivity: 0.55,
-  interactions: 0
-}
-
-function deriveStage(n: number): PersonalitySnapshot['stage'] {
-  if (n < 30) return '初识'
-  if (n < 100) return '熟悉'
-  if (n < 250) return '亲密'
-  return '挚友'
-}
-
-export function getPersonalitySnapshot(): PersonalitySnapshot {
+export function buildPersonalitySnapshot(
+  vector: PersonalityState,
+  interactions: number
+): PersonalitySnapshot {
   return {
-    energy: MOCK.energy,
-    attachment: MOCK.attachment,
-    sensitivity: MOCK.sensitivity,
-    interactions: MOCK.interactions,
-    stage: deriveStage(MOCK.interactions)
+    energy: vector.energy,
+    attachment: vector.attachment,
+    sensitivity: vector.sensitivity,
+    interactions,
+    stage: deriveGrowthStage(interactions)
   }
 }

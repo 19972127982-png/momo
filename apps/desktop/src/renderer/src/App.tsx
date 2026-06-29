@@ -99,6 +99,15 @@ function App(): React.JSX.Element {
     })()
   }, [])
 
+  // 每次打开设置面板时刷新性格快照 —— 互动次数 / 三维向量在主进程每轮对话后已落库，
+  // 但 renderer 的 personality 状态只在启动时拉过一次，这里重拉保证设置面板显示最新值。
+  useEffect(() => {
+    if (!configVisible) return
+    const ipc = window.echopet
+    if (!ipc) return
+    void ipc.personality.getSnapshot().then(setPersonality)
+  }, [configVisible])
+
   // 订阅 main 推过来的 stream 事件，转译成状态机事件
   useEffect(() => {
     const ipc = window.echopet

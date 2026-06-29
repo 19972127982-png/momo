@@ -77,6 +77,59 @@ function processLine(line: string, cbs: StreamCallbacks): 'done' | 'continue' {
   return 'continue'
 }
 
+/**
+ * 非流式补全 —— 一次性拿完整回复文本。
+ * 用于「不需要打字机效果」的后台 LLM 任务：用户画像抽取（D3）、性格 delta 分析（D5）。
+ * 失败（网络 / 超时 / 非 2xx / 空回复）一律抛 Error，调用方自行 swallow。
+ */
+export async function completeDeepSeek(
+  messages: readonly ChatCompletionMessage[],
+  apiKey: string,
+  signal: AbortSignal,
+  options: StreamDeepSeekOptions = {}
+): Promise<string> {
+  const timeoutMs = options.timeoutMs ?? 15_000
+  const inner = new AbortController()
+  const onOuterAbort = (): void => inner.abort()
+  signal.addEventListener('abort', onOuterAbort)
+  const timer = setTimeout(() => inner.abort(), timeoutMs)
+
+  try {
+    const body: Record<string, unknown> = {
+      model: DEEPSEEK_MODEL,
+      stream: false,
+      messages: messages.map(toApiMessage)
+    }
+    if (options.temperature !== undefined) body.temperature = options.temperature
+    if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens
+
+    const resp = await fetch(DEEPSEEK_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(body),
+      signal: inner.signal
+    })
+
+    if (!resp.ok) {
+      throw new Error(`DeepSeek 返回 ${resp.status}`)
+    }
+    const json = (await resp.json()) as {
+      choices?: Array<{ message?: { content?: string } }>
+    }
+    const content = json.choices?.[0]?.message?.content
+    if (typeof content !== 'string' || !content.trim()) {
+      throw new Error('DeepSeek 返回空内容')
+    }
+    return content
+  } finally {
+    clearTimeout(timer)
+    signal.removeEventListener('abort', onOuterAbort)
+  }
+}
+
 export async function streamDeepSeek(
   messages: readonly ChatCompletionMessage[],
   apiKey: string,

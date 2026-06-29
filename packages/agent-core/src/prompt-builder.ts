@@ -59,11 +59,17 @@ export class DefaultPromptBuilder implements PromptBuilder {
     const sections: string[] = []
 
     sections.push(`你是「${input.personaName}」，一只住在用户桌面的小伙伴。`)
-    if (input.userCalling && input.userCalling.trim()) {
-      sections.push(`你称呼主人为「${input.userCalling.trim()}」。`)
-    }
 
     sections.push(STATIC_PERSONA_BLOCK)
+
+    // 用户指定了称呼 → 提成显式强指令（放在底色之后，优先级高、不易被忽略）
+    if (input.userCalling && input.userCalling.trim()) {
+      sections.push(
+        `【怎么称呼 ta（重要）】\n` +
+          `ta 希望你叫 ta「${input.userCalling.trim()}」。` +
+          `在回应里自然地用这个称呼来称呼 ta，别用其它叫法，也别忘了用。`
+      )
+    }
 
     sections.push(
       `【你现在的性格状态（会随相处慢慢变化）】\n${formatPersonalityLines(input.personality)}`

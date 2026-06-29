@@ -28,18 +28,19 @@ describe('DefaultPromptBuilder.composeSystemPrompt', () => {
     expect(sys).toContain('「小桃」的口吻')
   })
 
-  it('提供 userCalling 时，称呼写入 prompt', () => {
+  it('提供 userCalling 时，称呼写入 prompt 且为强指令', () => {
     const sys = new DefaultPromptBuilder().composeSystemPrompt(
       makeInput({ userCalling: '小桃桃' })
     )
-    expect(sys).toContain('称呼主人为「小桃桃」')
+    expect(sys).toContain('怎么称呼 ta')
+    expect(sys).toContain('「小桃桃」')
   })
 
-  it('userCalling 是空白时不写入', () => {
+  it('userCalling 是空白时不写入称呼指令', () => {
     const sys = new DefaultPromptBuilder().composeSystemPrompt(
       makeInput({ userCalling: '   ' })
     )
-    expect(sys).not.toContain('称呼主人为')
+    expect(sys).not.toContain('怎么称呼 ta')
   })
 
   it('三维向量 → 3 行性格修饰被注入', () => {
