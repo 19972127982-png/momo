@@ -10,6 +10,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@echopet/agent-core':
+        specifier: workspace:*
+        version: link:../../packages/agent-core
       '@echopet/state-machine':
         specifier: workspace:*
         version: link:../../packages/state-machine

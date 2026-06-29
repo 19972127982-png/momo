@@ -21,6 +21,7 @@
     "build:linux": "electron-vite build && electron-builder --linux"
   },
   "dependencies": {
+    "@echopet/agent-core": "workspace:*",
     "@echopet/state-machine": "workspace:*",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",

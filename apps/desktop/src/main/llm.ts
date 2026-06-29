@@ -6,21 +6,23 @@
  *     1) API key 是 secret，渲染进程不该看到；
  *     2) `node-fetch` 在主进程跑省去 CORS / CSP 问题。
  * - 采用纯回调（onChunk / onEnd / onError）而非 async iterator —— 调用方
- *   只关心副作用，统一通过 IPC 转发给 renderer。
+ *   只关心副作用；上层 `companionClient.ts` 再把它桥接成 ChatCompletionClient 的
+ *   AsyncIterable 协议。
  * - 支持 AbortSignal —— 用户在上一轮还在 streaming 时再次发问，
  *   主进程会先 abort 上一个 controller，避免两条流串到同一气泡。
  * - SSE 行解析按 `\n` 分割，行内 `data:` 前缀去掉；`data: [DONE]` 是 end sentinel。
  *   循环结束后还会 flush 一次 buffer，覆盖「服务端最后一行不带换行」的边界场景。
  * - 内置 60s 总超时：网络 hang（TCP 已建、body 永不返回）时也能向 UI 报 onError，
  *   避免状态机停留在 thinking 无解。
+ *
+ * v2.1 W3 D2 重构：入参从 `userText: string` 改为 `messages: ChatCompletionMessage[]`，
+ * 由调用方（companionClient）拼接好 system + 工作记忆 + 当前 user 输入再传入。
  */
+
+import type { ChatCompletionMessage } from '@echopet/agent-core'
 
 const DEEPSEEK_ENDPOINT = 'https://api.deepseek.com/v1/chat/completions'
 const DEEPSEEK_MODEL = 'deepseek-chat'
-
-const SYSTEM_PROMPT =
-  '你是 EchoPet，一只温暖、聪明、爱与人聊天的桌面小宠物。' +
-  '回答简短亲切，控制在 60 字以内，不要列条目，像和朋友闲聊一样。'
 
 const DEFAULT_TIMEOUT_MS = 60_000
 
@@ -30,8 +32,31 @@ export interface StreamCallbacks {
   onError: (message: string) => void
 }
 
+export interface StreamDeepSeekOptions {
+  /** 0-2，未传则交给服务端默认（DeepSeek chat 默认 1.0） */
+  temperature?: number
+  /** 单次回复 token 上限，未传走服务端默认 */
+  maxTokens?: number
+  /** 全链路超时（建立连接 + 完整读流），默认 60s */
+  timeoutMs?: number
+}
+
 interface DeepSeekChunk {
   choices?: Array<{ delta?: { content?: string } }>
+}
+
+/** 把内部统一的 message 形状翻译成 DeepSeek（OpenAI 兼容）API 接受的形状 */
+function toApiMessage(m: ChatCompletionMessage): Record<string, unknown> {
+  if (m.role === 'tool') {
+    const out: Record<string, unknown> = {
+      role: 'tool',
+      content: m.content
+    }
+    if (m.toolCallId) out.tool_call_id = m.toolCallId
+    if (m.name) out.name = m.name
+    return out
+  }
+  return { role: m.role, content: m.content }
 }
 
 /** 解析单行 SSE，返回 'done' / 'continue'，触发回调 */
@@ -53,12 +78,13 @@ function processLine(line: string, cbs: StreamCallbacks): 'done' | 'continue' {
 }
 
 export async function streamDeepSeek(
-  userText: string,
+  messages: readonly ChatCompletionMessage[],
   apiKey: string,
   cbs: StreamCallbacks,
   signal: AbortSignal,
-  timeoutMs = DEFAULT_TIMEOUT_MS
+  options: StreamDeepSeekOptions = {}
 ): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   // 合并 outer signal + 内部 timeout，作为单一 abort 源
   const inner = new AbortController()
   const onOuterAbort = (): void => inner.abort()
@@ -77,20 +103,21 @@ export async function streamDeepSeek(
   try {
     let resp: Response
     try {
+      const body: Record<string, unknown> = {
+        model: DEEPSEEK_MODEL,
+        stream: true,
+        messages: messages.map(toApiMessage)
+      }
+      if (options.temperature !== undefined) body.temperature = options.temperature
+      if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens
+
       resp = await fetch(DEEPSEEK_ENDPOINT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`
         },
-        body: JSON.stringify({
-          model: DEEPSEEK_MODEL,
-          stream: true,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: userText }
-          ]
-        }),
+        body: JSON.stringify(body),
         signal: inner.signal
       })
     } catch (err) {
