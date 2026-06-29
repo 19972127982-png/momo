@@ -6,6 +6,7 @@ import { buildPersonalitySnapshot } from './personality'
 import { getDb, closeDb } from './db/connection'
 import { SqliteMemoryStore } from './memory/sqliteMemoryStore'
 import { maybeExtractProfile } from './memory/profileExtractor'
+import { maybeSummarize } from './memory/summarizer'
 import type { AppSettings } from '../shared/ipcTypes'
 import {
   CompanionAgent,
@@ -88,9 +89,9 @@ app.whenReady().then(async () => {
     stopDrag()
   })
 
-  // ---------- 陪伴对话主路径（W3 D3：CompanionAgent + SQLite 三层记忆） ----------
-  // 流程：注入工作记忆 + 用户画像 + 性格 → CompanionAgent 流式 → 落库 + 异步画像提取。
-  // 情景记忆（recentEpisodicMemories）D4 接 ChromaDB；性格 delta 演化 D5。
+  // ---------- 陪伴对话主路径（W3 D3/D4：CompanionAgent + SQLite 三层记忆） ----------
+  // 流程：注入工作记忆 + 用户画像 + 性格 + 情景记忆召回 → CompanionAgent 流式
+  //   → 落库 + 异步画像提取 + 异步情景摘要。性格 delta 演化 D5。
   ipcMain.handle('chat:send', async (event, text: unknown) => {
     if (typeof text !== 'string' || !text.trim()) {
       return { ok: false as const, error: '空消息' }
@@ -115,18 +116,19 @@ app.whenReady().then(async () => {
     chatAbort = ac
 
     const settings = await loadSettings()
-    const [vector, totalInteractions, workingMemory, profile] = await Promise.all([
+    const [vector, totalInteractions, workingMemory, profile, episodic] = await Promise.all([
       store.getPersonality(),
       store.getTotalInteractions(),
       store.recentMessages(20),
-      store.getUserProfile()
+      store.getUserProfile(),
+      store.recallEpisodicMemories(userInput, 3)
     ])
 
     const ctx: AgentRunContext = {
       userInput,
       workingMemory,
       userProfileSummary: summarizeUserProfile(profile),
-      recentEpisodicMemories: [],
+      recentEpisodicMemories: episodic,
       personality: vector,
       growthStage: deriveGrowthStage(totalInteractions),
       totalInteractions,
@@ -187,6 +189,13 @@ app.whenReady().then(async () => {
         signal: new AbortController().signal
       }).then((res) => {
         if (res.updated) turnsSinceProfileExtraction = 0
+      })
+
+      // 异步情景记忆摘要（每累计 N 条新消息提炼一次事件卡片，独立 signal）
+      void maybeSummarize({
+        store,
+        getApiKey: () => cachedApiKey,
+        signal: new AbortController().signal
       })
     }
 

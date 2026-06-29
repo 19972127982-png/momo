@@ -61,3 +61,18 @@ export {
   summarizeUserProfile,
   type ShouldExtractInput
 } from './profile-extraction'
+
+// v2.1 D4 NEW —— 情景记忆：摘要 Agent 纯逻辑 + 关键词召回
+export {
+  shouldSummarize,
+  buildSummaryPrompt,
+  parseSummaryCards,
+  type ShouldSummarizeInput,
+  type SummaryCard
+} from './episodic-summary'
+
+export {
+  tokenize,
+  scoreEpisodicRecall,
+  type RecallScored
+} from './episodic-recall'

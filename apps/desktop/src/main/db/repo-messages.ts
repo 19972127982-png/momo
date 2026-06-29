@@ -64,4 +64,22 @@ export class MessagesRepo {
       .get() as { c: number }
     return row.c
   }
+
+  /** 当前最大 message id（无消息时返回 0）—— 摘要游标用 */
+  maxId(): number {
+    const row = this.db
+      .prepare(`SELECT COALESCE(MAX(id), 0) AS m FROM conversation_messages`)
+      .get() as { m: number }
+    return row.m
+  }
+
+  /** id > afterId 的消息，按 id 升序（旧 → 新），上限 limit 条 —— 摘要取增量用 */
+  after(afterId: number, limit: number): ConversationMessage[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM conversation_messages WHERE id > ? ORDER BY id ASC LIMIT ?`
+      )
+      .all(afterId, limit) as MessageRow[]
+    return rows.map(rowToMessage)
+  }
 }

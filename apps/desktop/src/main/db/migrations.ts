@@ -12,8 +12,8 @@
  *   - user_profile          : 结构化用户画像（JSON blob 单行）
  *   - pet_personality       : 三维性格向量 + 互动总数（单行）
  *   - evolution_log         : 性格漂移轨迹（D5 写入，作品集画图数据源）
- *
- * 情景记忆（episodic）在 D4 接 ChromaDB，不落 SQLite，这里不建表。
+ *   - episodic_memories     : 情景记忆事件卡片（D4，关键词召回；向量召回 W5 升级）
+ *   - app_meta              : 通用 KV（D4，存摘要游标等进程间持久化的小状态）
  */
 
 export interface Migration {
@@ -70,6 +70,29 @@ CREATE TABLE IF NOT EXISTS evolution_log (
   trigger_msg_snippet    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_evolution_ts ON evolution_log (ts);
+`
+  },
+  {
+    version: 2,
+    name: 'episodic_memory',
+    sql: `
+-- 情景记忆：摘要 Agent 提炼的事件卡片（D4 关键词召回）
+-- keywords 单列存 JSON 数组，便于召回打分；metadata 存其它附加信息
+CREATE TABLE IF NOT EXISTS episodic_memories (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  summary    TEXT    NOT NULL,
+  event_type TEXT,
+  keywords   TEXT    NOT NULL DEFAULT '[]',
+  ts         INTEGER NOT NULL,
+  metadata   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_episodic_ts ON episodic_memories (ts);
+
+-- 通用 KV：摘要游标（episodic_last_msg_id）等进程间持久化小状态
+CREATE TABLE IF NOT EXISTS app_meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `
   }
 ]
