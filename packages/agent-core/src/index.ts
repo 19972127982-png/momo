@@ -120,3 +120,30 @@ export {
   type DroppedFileKind,
   type FileSummaryInput,
 } from "./file-summary";
+
+// v2.1 W4 D1 NEW —— 权限闸纯逻辑（grant 匹配 / scope 审批判定 / 决策）
+export {
+  scopeNeedsApproval,
+  targetMatches,
+  grantIsActive,
+  grantCovers,
+  findCoveringGrant,
+  evaluatePermission,
+  buildGrantFromDecision,
+  type GrantGrade,
+  type PermissionGrant,
+  type PermissionRequest,
+  type PermissionDecision,
+} from "./permission";
+
+// v2.1 W4 D1 NEW —— Skills 框架（3 内置包定义 + 解析）
+export {
+  BUILTIN_SKILLS,
+  getSkill,
+  isSkillId,
+  serversForEnabledSkills,
+  promptAddonForEnabledSkills,
+  defaultScopesForEnabledSkills,
+  type SkillId,
+  type SkillDef,
+} from "./skills";

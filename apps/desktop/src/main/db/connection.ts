@@ -11,6 +11,7 @@ import Database from 'better-sqlite3'
 import { app } from 'electron'
 import path from 'node:path'
 import { MIGRATIONS } from './migrations'
+import { SkillRepo } from './repo-skills'
 
 export type DB = Database.Database
 
@@ -40,16 +41,12 @@ function runMigrations(database: DB): void {
 /** 播种单行表（pet_personality / user_profile），幂等 */
 function seedSingletons(database: DB): void {
   const now = Date.now()
+  database.prepare(`INSERT OR IGNORE INTO pet_personality (id, created_at) VALUES (1, ?)`).run(now)
   database
-    .prepare(
-      `INSERT OR IGNORE INTO pet_personality (id, created_at) VALUES (1, ?)`
-    )
+    .prepare(`INSERT OR IGNORE INTO user_profile (id, data, updated_at) VALUES (1, '{}', ?)`)
     .run(now)
-  database
-    .prepare(
-      `INSERT OR IGNORE INTO user_profile (id, data, updated_at) VALUES (1, '{}', ?)`
-    )
-    .run(now)
+  // W4：播种 3 个内置 Skill（仅插入缺失的，不覆盖用户 enabled）
+  new SkillRepo(database).seed(now)
 }
 
 export function getDb(): DB {

@@ -14,6 +14,9 @@
  *   - evolution_log         : 性格漂移轨迹（D5 写入，作品集画图数据源）
  *   - episodic_memories     : 情景记忆事件卡片（D4，关键词召回；向量召回 W5 升级）
  *   - app_meta              : 通用 KV（D4，存摘要游标等进程间持久化的小状态）
+ *   - skills / mcp_servers  : W4 Skills 框架（启用态 + server 配置）
+ *   - permission_grants     : W4 权限闸（永久授权，expires_at NULL=永久）
+ *   - tool_call_logs        : W4 工具调用审计（append-only）
  */
 
 export interface Migration {
@@ -93,6 +96,64 @@ CREATE TABLE IF NOT EXISTS app_meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+`
+  },
+  {
+    version: 3,
+    name: 'tools_skills_permissions',
+    sql: `
+-- Skills 内置包启用态（id 对齐 agent-core BUILTIN_SKILLS：dev/file-butler/bare）
+CREATE TABLE IF NOT EXISTS skills (
+  id               TEXT    PRIMARY KEY,
+  name             TEXT    NOT NULL,
+  enabled          INTEGER NOT NULL DEFAULT 0,
+  included_servers TEXT    NOT NULL DEFAULT '[]',
+  prompt_addon     TEXT    NOT NULL DEFAULT '',
+  created_at       INTEGER NOT NULL
+);
+
+-- MCP server 配置 + 健康状态（启用的会被动态 spawn）
+CREATE TABLE IF NOT EXISTS mcp_servers (
+  id           TEXT    PRIMARY KEY,
+  name         TEXT    NOT NULL,
+  transport    TEXT    NOT NULL DEFAULT 'stdio' CHECK (transport IN ('stdio', 'sse')),
+  command      TEXT,
+  args         TEXT    NOT NULL DEFAULT '[]',
+  env          TEXT    NOT NULL DEFAULT '{}',
+  capabilities TEXT    NOT NULL DEFAULT '[]',
+  status       TEXT    NOT NULL DEFAULT 'stopped' CHECK (status IN ('running', 'stopped', 'degraded')),
+  last_ping_at INTEGER,
+  enabled      INTEGER NOT NULL DEFAULT 0
+);
+
+-- 权限闸：永久授权（expires_at NULL=永久；revoked_at 非空=已撤销）
+CREATE TABLE IF NOT EXISTS permission_grants (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  scope          TEXT    NOT NULL CHECK (scope IN ('read', 'write', 'exec', 'network')),
+  target_pattern TEXT    NOT NULL,
+  agent_name     TEXT,
+  server_id      TEXT,
+  granted_at     INTEGER NOT NULL,
+  expires_at     INTEGER,
+  revoked_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_grants_scope ON permission_grants (scope);
+
+-- 工具调用审计（append-only，审计 + W5 评测数据源）
+CREATE TABLE IF NOT EXISTS tool_call_logs (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts             INTEGER NOT NULL,
+  agent_name     TEXT,
+  server_id      TEXT,
+  tool_name      TEXT    NOT NULL,
+  args_summary   TEXT,
+  result_summary TEXT,
+  ok             INTEGER NOT NULL DEFAULT 0,
+  latency_ms     INTEGER,
+  denied_reason  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tool_logs_ts ON tool_call_logs (ts);
+CREATE INDEX IF NOT EXISTS idx_tool_logs_agent ON tool_call_logs (agent_name);
 `
   }
 ]
