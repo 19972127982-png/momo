@@ -71,6 +71,12 @@ function useInView<T extends Element>(): [React.RefObject<T | null>, boolean] {
   return [ref, inView]
 }
 
+/** /demo/foo.mp4 → /demo/posters/foo.jpg（首帧占位，秒显） */
+function posterFor(src: string): string {
+  const file = src.split('/').pop() ?? ''
+  return `/demo/posters/${file.replace(/\.mp4$/, '.jpg')}`
+}
+
 function AutoVideo({ src }: { src: string }): React.ReactElement {
   const [ref, inView] = useInView<HTMLVideoElement>()
 
@@ -88,6 +94,7 @@ function AutoVideo({ src }: { src: string }): React.ReactElement {
     <video
       ref={ref}
       src={src}
+      poster={posterFor(src)}
       muted
       loop
       playsInline
@@ -120,6 +127,7 @@ function SeqVideo({ srcs }: { srcs: string[] }): React.ReactElement {
     <video
       ref={ref}
       src={srcs[idx]}
+      poster={posterFor(srcs[0])}
       muted
       playsInline
       preload="none"

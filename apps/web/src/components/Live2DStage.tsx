@@ -59,7 +59,7 @@ export default function Live2DStage({
     let app: any = null
     let cleanupResize: (() => void) | null = null
 
-    ;(async () => {
+    const start = async (): Promise<void> => {
       try {
         const container = containerRef.current
         if (!container) return
@@ -145,10 +145,15 @@ export default function Live2DStage({
       } catch (e) {
         if (!disposed) onError?.(e instanceof Error ? e : new Error(String(e)))
       }
-    })()
+    }
+
+    // 延后到首屏渲染之后再初始化：先让正文/标题秒出，重资产（pixi + 贴图）随后补上。
+    // 用 setTimeout 而非 requestIdleCallback，保证在任何环境下都会触发。
+    const timerId = window.setTimeout(() => start(), 250)
 
     return () => {
       disposed = true
+      window.clearTimeout(timerId)
       cleanupResize?.()
       try {
         // destroy(true)：pixi 摘除并销毁它自己创建的 canvas（React 不持有它，安全）
