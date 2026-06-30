@@ -116,27 +116,29 @@ function AutoVideo({
   play: boolean
 }): React.ReactElement {
   const ref = useRef<HTMLVideoElement>(null)
-  const [ready, setReady] = useState(false)
-  const loadStarted = useRef(false)
+  const [playing, setPlaying] = useState(false)
+  const warmed = useRef(false)
 
   useEffect(() => {
     const v = ref.current
     if (!v) return
-    if (eager && !loadStarted.current) {
-      loadStarted.current = true
-      v.preload = 'auto'
-      try {
-        v.load()
-      } catch {
-        /* ignore */
+    if (play) {
+      // 直接 play() 触发缓冲+播放（不依赖 canplay，避免移动端 preload 被忽略导致死锁）
+      v.play().catch(() => {})
+    } else {
+      v.pause()
+      // 仅桌面端：离屏卡片提前预热，滚到即播；移动端不预热（浏览器会忽略且抢带宽）
+      if (eager && !warmed.current) {
+        warmed.current = true
+        v.preload = 'auto'
+        try {
+          v.load()
+        } catch {
+          /* ignore */
+        }
       }
     }
-    if (play && ready) {
-      v.play().catch(() => {})
-    } else if (!play) {
-      v.pause()
-    }
-  }, [play, ready, eager])
+  }, [play, eager])
 
   return (
     <div className="relative h-full w-full">
@@ -148,52 +150,44 @@ function AutoVideo({
         loop
         playsInline
         preload="none"
-        onCanPlay={() => setReady(true)}
+        onPlaying={() => setPlaying(true)}
+        onWaiting={() => setPlaying(false)}
+        onPause={() => setPlaying(false)}
         className="h-full w-full object-contain"
       />
-      {play && !ready && <Spinner />}
+      {play && !playing && <Spinner />}
     </div>
   )
 }
 
 /** 多段连播：顺序播放并整体循环 */
-function SeqVideo({
-  srcs,
-  eager,
-  play
-}: {
-  srcs: string[]
-  eager: boolean
-  play: boolean
-}): React.ReactElement {
+function SeqVideo({ srcs, play }: { srcs: string[]; play: boolean }): React.ReactElement {
   const ref = useRef<HTMLVideoElement>(null)
   const [idx, setIdx] = useState(0)
-  const [ready, setReady] = useState(false)
+  const [playing, setPlaying] = useState(false)
   const loadedIdx = useRef(-1)
 
   useEffect(() => {
     const v = ref.current
     if (!v) return
-    // 换源（含初次/切段）：必须 load() 才能真正切到新 src
-    if (eager && loadedIdx.current !== idx) {
+    // 换源（含初次/切段）：改了 src 必须 load() 才能真正切到新 src
+    if (loadedIdx.current !== idx) {
       loadedIdx.current = idx
-      v.preload = 'auto'
       try {
         v.load()
       } catch {
         /* ignore */
       }
-      return
     }
-    if (play && ready) {
+    if (play) {
       v.play().catch(() => {})
-    } else if (!play) {
+    } else {
       v.pause()
     }
-  }, [play, ready, idx, eager])
+  }, [play, idx])
 
   function onEnded(): void {
-    setReady(false)
+    setPlaying(false)
     setIdx((i) => (i + 1) % srcs.length)
   }
 
@@ -206,11 +200,13 @@ function SeqVideo({
         muted
         playsInline
         preload="none"
-        onCanPlay={() => setReady(true)}
+        onPlaying={() => setPlaying(true)}
+        onWaiting={() => setPlaying(false)}
+        onPause={() => setPlaying(false)}
         onEnded={onEnded}
         className="h-full w-full object-contain"
       />
-      {play && !ready && <Spinner />}
+      {play && !playing && <Spinner />}
     </div>
   )
 }
@@ -246,7 +242,7 @@ function VideoCard({
     <figure className="overflow-hidden rounded-3xl bg-white ring-1 ring-peach-100">
       <div ref={ref} className="grid aspect-square place-items-center bg-peach-50">
         {item.srcs ? (
-          <SeqVideo srcs={item.srcs} eager={eager} play={play} />
+          <SeqVideo srcs={item.srcs} play={play} />
         ) : (
           <AutoVideo src={item.src!} eager={eager} play={play} />
         )}
@@ -268,6 +264,8 @@ function sameSet(a: string[], b: string[]): boolean {
 export default function DemoSection(): React.ReactElement {
   const eager = useEagerAfterPet()
   const isMobile = useIsMobile()
+  // 仅桌面端批量预热；移动端按需加载（避免预热被忽略还抢带宽）
+  const eagerPreload = eager && !isMobile
   const ratios = useRef<Map<string, number>>(new Map())
   const [playKeys, setPlayKeys] = useState<string[]>([])
 
@@ -322,7 +320,7 @@ export default function DemoSection(): React.ReactElement {
             <VideoCard
               key={d.title}
               item={d}
-              eager={eager}
+              eager={eagerPreload}
               play={playKeys.includes(d.title)}
               onRatio={onRatio}
             />
