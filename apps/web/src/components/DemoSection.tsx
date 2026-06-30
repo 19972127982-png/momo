@@ -78,30 +78,54 @@ function posterFor(src: string): string {
   return `/demo/posters/${file.replace(/\.mp4$/, '.jpg')}`
 }
 
+/** 缓冲转圈 */
+function Spinner(): React.ReactElement {
+  return (
+    <div className="pointer-events-none absolute inset-0 grid place-items-center">
+      <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-peach-200 border-t-peach-500" />
+    </div>
+  )
+}
+
 function AutoVideo({ src }: { src: string }): React.ReactElement {
   const [ref, inView] = useInView<HTMLVideoElement>()
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     const v = ref.current
     if (!v) return
     if (inView) {
-      v.play().catch(() => {})
+      if (ready) {
+        v.play().catch(() => {})
+      } else {
+        // 进视口先缓冲，canplay 后再播（见 onCanPlay）
+        v.preload = 'auto'
+        try {
+          v.load()
+        } catch {
+          /* ignore */
+        }
+      }
     } else {
       v.pause()
     }
-  }, [inView, ref])
+  }, [inView, ready, ref])
 
   return (
-    <video
-      ref={ref}
-      src={src}
-      poster={posterFor(src)}
-      muted
-      loop
-      playsInline
-      preload="none"
-      className="h-full w-full object-contain"
-    />
+    <div className="relative h-full w-full">
+      <video
+        ref={ref}
+        src={src}
+        poster={posterFor(src)}
+        muted
+        loop
+        playsInline
+        preload="none"
+        onCanPlay={() => setReady(true)}
+        className="h-full w-full object-contain"
+      />
+      {inView && !ready && <Spinner />}
+    </div>
   )
 }
 
@@ -109,38 +133,60 @@ function AutoVideo({ src }: { src: string }): React.ReactElement {
 function SeqVideo({ srcs }: { srcs: string[] }): React.ReactElement {
   const [ref, inView] = useInView<HTMLVideoElement>()
   const [idx, setIdx] = useState(0)
+  const [ready, setReady] = useState(false)
   const loadedIdx = useRef(-1)
 
   useEffect(() => {
     const v = ref.current
     if (!v) return
     // 切到下一段时 src 变了：必须 load() 让 <video> 真正换源，否则连播会卡在上一段
-    if (loadedIdx.current !== idx) {
+    // 仅在进入视口后才加载，保持懒加载
+    if (inView && loadedIdx.current !== idx) {
       loadedIdx.current = idx
-      v.load()
+      v.preload = 'auto'
+      try {
+        v.load()
+      } catch {
+        /* ignore */
+      }
+      return
     }
     if (inView) {
-      v.play().catch(() => {})
+      if (ready) {
+        v.play().catch(() => {})
+      } else {
+        v.preload = 'auto'
+        try {
+          v.load()
+        } catch {
+          /* ignore */
+        }
+      }
     } else {
       v.pause()
     }
-  }, [inView, idx, ref])
+  }, [inView, ready, idx, ref])
 
   function onEnded(): void {
+    setReady(false)
     setIdx((i) => (i + 1) % srcs.length)
   }
 
   return (
-    <video
-      ref={ref}
-      src={srcs[idx]}
-      poster={posterFor(srcs[0])}
-      muted
-      playsInline
-      preload="none"
-      onEnded={onEnded}
-      className="h-full w-full object-contain"
-    />
+    <div className="relative h-full w-full">
+      <video
+        ref={ref}
+        src={srcs[idx]}
+        poster={posterFor(srcs[0])}
+        muted
+        playsInline
+        preload="none"
+        onCanPlay={() => setReady(true)}
+        onEnded={onEnded}
+        className="h-full w-full object-contain"
+      />
+      {inView && !ready && <Spinner />}
+    </div>
   )
 }
 

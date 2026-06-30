@@ -13,12 +13,24 @@ const REPLY_HIDE_MS = 5_000
 
 export default function PetWidget(): React.ReactElement {
   const [inputOpen, setInputOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const [stageError, setStageError] = useState(false)
   const [live2dReady, setLive2dReady] = useState(false)
   const { messages, status, nudged, send } = useChat()
   const [draft, setDraft] = useState('')
 
   const busy = status !== 'idle'
+
+  // 移动端默认展开输入框；桌面端点击人物才展开
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639px)')
+    const apply = (): void => setIsMobile(mq.matches)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
+
+  const showInput = isMobile || inputOpen
 
   // 桌面版交互：只显示 EchoPet 最近一句回复的气泡（用户输入在输入框里）
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
@@ -34,13 +46,13 @@ export default function PetWidget(): React.ReactElement {
   useEffect(() => {
     setBubbleVisible(true)
     // 思考 / 流式 / 输入框打开（≈监听）→ 常驻，不自动淡出
-    if (status === 'thinking' || status === 'streaming' || inputOpen) return
+    if (status === 'thinking' || status === 'streaming' || showInput) return
     // idle：首次问候 10s，其余（回复完成 / 引导）5s
     const delay = greetingConsumedRef.current ? REPLY_HIDE_MS : GREETING_HIDE_MS
     greetingConsumedRef.current = true
     const t = window.setTimeout(() => setBubbleVisible(false), delay)
     return () => window.clearTimeout(t)
-  }, [status, inputOpen, lastAssistantId, lastAssistantContent])
+  }, [status, showInput, lastAssistantId, lastAssistantContent])
 
   function onSubmit(e: React.FormEvent): void {
     e.preventDefault()
@@ -92,7 +104,7 @@ export default function PetWidget(): React.ReactElement {
       <button
         onClick={() => setInputOpen((o) => !o)}
         aria-label={inputOpen ? '收起输入框' : '和 EchoPet 聊聊'}
-        className="relative block h-64 w-48 cursor-pointer sm:h-[32rem] sm:max-h-[78vh] sm:w-[23rem]"
+        className="relative block h-80 w-60 cursor-pointer sm:h-[32rem] sm:max-h-[78vh] sm:w-[23rem]"
       >
         {/* 静态立绘：一进页面就秒显；Live2D 就绪后淡出；出错则保留作为兜底 */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -118,8 +130,8 @@ export default function PetWidget(): React.ReactElement {
         )}
       </button>
 
-      {/* 脚下输入框：点人物后出现 */}
-      {inputOpen && (
+      {/* 脚下输入框：移动端默认显示，桌面端点人物后出现 */}
+      {showInput && (
         <form
           onSubmit={onSubmit}
           className="animate-fade-up flex w-[17rem] items-center gap-2 rounded-full border border-peach-100 bg-white px-3 py-2 shadow-xl shadow-peach-300/30 sm:w-[20rem]"
