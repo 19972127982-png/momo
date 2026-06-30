@@ -1,22 +1,27 @@
 /**
- * 用 Electron `safeStorage` 把 DeepSeek API Key 加密落盘到 userData。
+ * DeepSeek API Key 的本地存储。
  *
- * - macOS：底层是 Keychain Service；Windows：DPAPI；Linux：libsecret / gnome-keyring。
- * - encryptString 返回 Buffer，落地后是不可读密文，跨用户 / 跨机器都解不开。
- * - `safeStorage.isEncryptionAvailable()` 在 Linux 上某些 headless 环境会返回 false，
- *   这种情况我们退化为「内存里临时持有，重启就丢」并向上报错让 UI 提示用户。
+ * 为什么不用 `safeStorage`（Keychain）：
+ *   safeStorage 在 macOS 底层走 Keychain，授权绑定到 app 的代码签名。未签名 /
+ *   ad-hoc 分发的 app 没有稳定签名身份，导致每次启动都弹「输入登录钥匙串密码」，
+ *   严重影响「拿到就能用」。这里改为落盘到 userData 下的本地文件：
+ *     - base64 轻混淆（防一眼瞄到，不是强加密）
+ *     - chmod 0600，仅当前用户可读写
+ *   key 只存在用户自己机器的私有目录里（性质同 ~/.npmrc / ~/.aws/credentials）。
+ *   将来若接入 Apple Developer ID 签名+公证，可再切回 safeStorage。
  */
 
-import { app, safeStorage } from 'electron'
+import { app } from 'electron'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { DEFAULT_SETTINGS, type AppSettings } from '../shared/ipcTypes'
 
-const FILENAME = 'config.enc'
+const KEY_FILENAME = 'apikey.dat'
+const LEGACY_ENC_FILENAME = 'config.enc'
 const SETTINGS_FILENAME = 'settings.json'
 
-function configPath(): string {
-  return path.join(app.getPath('userData'), FILENAME)
+function keyPath(): string {
+  return path.join(app.getPath('userData'), KEY_FILENAME)
 }
 
 function settingsPath(): string {
@@ -44,20 +49,11 @@ async function atomicWrite(filePath: string, data: Buffer | string): Promise<voi
   }
 }
 
-/**
- * encryptionAvailable=false 时（Linux 无 keyring 等）的内存回退 key。
- * UI 上会提示「重启会丢失」，符合不强制磁盘加密的设计。
- */
-let memOnlyApiKey: string | null = null
-
 export async function loadApiKey(): Promise<string | null> {
-  if (!safeStorage.isEncryptionAvailable()) {
-    return memOnlyApiKey
-  }
   try {
-    const buf = await fs.readFile(configPath())
-    const decrypted = safeStorage.decryptString(buf)
-    return decrypted.trim() || null
+    const text = await fs.readFile(keyPath(), 'utf-8')
+    const decoded = Buffer.from(text.trim(), 'base64').toString('utf-8')
+    return decoded.trim() || null
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
     if (code !== 'ENOENT') {
@@ -70,22 +66,26 @@ export async function loadApiKey(): Promise<string | null> {
 export async function saveApiKey(key: string): Promise<void> {
   const trimmed = key.trim()
   if (!trimmed) throw new Error('API Key 不能为空')
-  if (!safeStorage.isEncryptionAvailable()) {
-    // 内存回退：本会话有效，重启丢失（UI 已警告用户）
-    memOnlyApiKey = trimmed
-    return
+  const encoded = Buffer.from(trimmed, 'utf-8').toString('base64')
+  await atomicWrite(keyPath(), encoded)
+  // 收紧权限：仅当前用户可读写（best-effort，失败不影响功能）
+  try {
+    await fs.chmod(keyPath(), 0o600)
+  } catch {
+    /* 某些文件系统不支持 chmod，忽略 */
   }
-  const enc = safeStorage.encryptString(trimmed)
-  await atomicWrite(configPath(), enc)
 }
 
 export async function clearApiKey(): Promise<void> {
-  memOnlyApiKey = null
-  try {
-    await fs.unlink(configPath())
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code
-    if (code !== 'ENOENT') throw err
+  // 一并清掉旧版 safeStorage 密文文件，避免残留
+  const targets = [keyPath(), path.join(app.getPath('userData'), LEGACY_ENC_FILENAME)]
+  for (const f of targets) {
+    try {
+      await fs.unlink(f)
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'ENOENT') throw err
+    }
   }
 }
 

@@ -10,6 +10,7 @@
  * （DevAgent / git server 暂不做，后续再加。）
  */
 import { app } from 'electron'
+import { dirname, join } from 'node:path'
 import type { LocalServerConfig, McpServerConfig } from '@echopet/mcp-host'
 import type { UtilityAgentName } from '@echopet/agent-core'
 import { buildSystemServerConfig } from './systemTools'
@@ -44,6 +45,18 @@ export function desktopDir(): string {
   return app.getPath('desktop')
 }
 
+/**
+ * 解析 @modelcontextprotocol/server-filesystem 的入口脚本路径。
+ *
+ * 该包是 ESM CLI（package.json 里 type: module、无 main/exports，只有
+ * bin: dist/index.js），所以不能直接 import，只能定位到 dist/index.js 再交给
+ * Node 跑。用 require.resolve 找 package.json 是最稳的方式（不受 exports 限制）。
+ */
+function filesystemServerEntry(): string {
+  const pkgJson = require.resolve('@modelcontextprotocol/server-filesystem/package.json')
+  return join(dirname(pkgJson), 'dist', 'index.js')
+}
+
 export const BUILTIN_SERVERS: readonly BuiltinServerDef[] = [
   {
     id: 'filesystem',
@@ -53,8 +66,14 @@ export const BUILTIN_SERVERS: readonly BuiltinServerDef[] = [
     capability: '查看/读写桌面目录下的文件与文件夹',
     buildConfig: () => ({
       id: 'filesystem',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-filesystem', desktopDir()]
+      // 免 npx：用 Electron 自带的 Node（process.execPath + ELECTRON_RUN_AS_NODE）
+      // 直接跑打进包里的 server-filesystem，普通用户无需预装 Node / 联网下包。
+      // 打包后 require.resolve 返回 app.asar 内的逻辑路径（下游依赖按 asar 解析），
+      // 而 server-filesystem 已在 electron-builder.yml 里 asarUnpack —— 这样这个
+      // app.asar 路径会重定向到真实文件，Node 的 ESM 入口加载器才能执行（已实测）。
+      command: process.execPath,
+      args: [filesystemServerEntry(), desktopDir()],
+      env: { ELECTRON_RUN_AS_NODE: '1' }
       // 不设 defaultScope —— scopeOf 按工具名推断（read 透传 / write_file 等触发审批）
     })
   },

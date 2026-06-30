@@ -40,7 +40,7 @@ const DIMENSIONS: Array<{
  *
  * - 永远 mount，靠 visible 切 opacity 做 fade
  * - 性格部分是 read-only 展示，数值由主进程 personality.ts 返回（W2 mock，W3 真实）
- * - 保存逻辑：宠物名字/称呼 → settings.json；API Key → safeStorage
+ * - 保存逻辑：宠物名字/称呼 → settings.json；API Key → 本机文件（base64 轻混淆）
  *   两路独立，互不影响 —— 只填 key 不动名字 / 只改名字不重填 key 都 OK
  */
 function ConfigDialog({
@@ -211,9 +211,6 @@ function ConfigDialog({
                   </div>
                 )
               })}
-              <div className="personality__note">
-                每次聊天会异步漂移 ±0.02 — W3 接入演化引擎后这里会动起来
-              </div>
             </div>
           ) : (
             <div className="config-dialog__hint">加载中…</div>
@@ -227,7 +224,7 @@ function ConfigDialog({
             <span className="config-dialog__section-tag">DeepSeek-V3</span>
           </div>
           <div className="config-dialog__hint">
-            前往 <code>platform.deepseek.com</code> 申请，仅在本机 Keychain 加密保存。
+            前往 <code>platform.deepseek.com</code> 申请，仅保存在本机，不会上传。
           </div>
           {!encryptionAvailable && (
             <div className="config-dialog__warn">

@@ -10,7 +10,7 @@ import { DEFAULT_SETTINGS, type AppSettings, type PersonalitySnapshot } from '..
 
 /** 默认气泡文案（speaking/done/apologetic 优先用 context 数据，这里只是 fallback） */
 const FALLBACK_TEXT: Record<PetState, string> = {
-  idle: '你好，我是 EchoPet — 点我说话吧',
+  idle: '嗨～ 能陪你聊天，也能帮你整理文件，创建提醒（动手前都会先问你）。点我说说看吧！',
   listening: '在听你说…',
   thinking: '让我想想…',
   speaking: '',
@@ -343,6 +343,11 @@ function App(): React.JSX.Element {
     }
     // 工作族调工具期间（仍在 thinking）显示工具状态提示，比「让我想想…」更具体
     if (stateValue === 'thinking' && toolStatus) return toolStatus
+    // 入场问候：用配置里的宠物名做自我介绍
+    if (stateValue === 'idle') {
+      const name = settings.petName || '小桃'
+      return `嗨，我是${name}～ 能陪你聊天，也能帮你整理文件，创建提醒（动手前都会先问你）。点我说说看吧！`
+    }
     return FALLBACK_TEXT[stateValue]
   }, [
     loadError,
@@ -351,7 +356,8 @@ function App(): React.JSX.Element {
     stateValue,
     snapshot.context.streamText,
     snapshot.context.lastError,
-    toolStatus
+    toolStatus,
+    settings.petName
   ])
 
   const handleSend = useCallback(

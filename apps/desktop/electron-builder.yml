@@ -1,7 +1,10 @@
-appId: com.electron.app
-productName: app
+appId: com.echopet.desktop
+productName: EchoPet
 directories:
   buildResources: build
+# 无开发者证书时 electron-builder 会跳过签名，留下被打包破坏的 Electron 自带签名，
+# Apple Silicon 上会「已损坏/打不开」。afterPack 钩子在打 DMG 前补一份 ad-hoc 签名。
+afterPack: scripts/afterPack.cjs
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -11,10 +14,17 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - 'resources/**'
+  # 免 npx 关键：解包内置的 filesystem MCP server。
+  # require.resolve 返回的是 app.asar 内的逻辑路径（下游依赖按 asar 解析，能读到
+  # asar 里的 zod 等），但 Node 的 ESM 入口加载器无法直接执行 asar 内的 .js；
+  # 解包后该 app.asar 路径会重定向到真实文件，入口才能被加载（已实测：解包则成功、
+  # 不解包则启动不了）。
+  - 'node_modules/@modelcontextprotocol/server-filesystem/**'
+  - 'node_modules/@modelcontextprotocol/sdk/**'
 win:
-  executableName: app
+  executableName: EchoPet
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  artifactName: ${productName}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -27,7 +37,7 @@ mac:
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: ${productName}-${version}.${ext}
 linux:
   target:
     - AppImage
@@ -36,8 +46,6 @@ linux:
   maintainer: electronjs.org
   category: Utility
 appImage:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: ${productName}-${version}.${ext}
 npmRebuild: false
-publish:
-  provider: generic
-  url: https://example.com/auto-updates
+# 暂不接入自动更新（未签名、走 GitHub Release 手动下载），故不配置 publish。

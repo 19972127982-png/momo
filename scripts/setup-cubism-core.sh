@@ -53,7 +53,9 @@ else
   green "    下载完成：$CUBISM_FILE ($SIZE bytes)"
 fi
 
-blue "==> 3/3  软链 Hiyori PRO 模型"
+blue "==> 3/3  拷贝 Hiyori PRO 模型"
+# 用「拷贝」而非软链：electron-builder 打 asar 时无法正确处理指向仓库外的
+# 软链，会导致构建产物里的模型失效。拷成实体文件才能保证「产物自带模型」。
 if [[ ! -d "$HIYORI_SRC" ]]; then
   red "    源目录不存在：$HIYORI_SRC"
   yellow "    请先把 Hiyori PRO 模型解压到 hiyori_en/hiyori_pro/runtime/"
@@ -65,8 +67,8 @@ if [[ -L "$HIYORI_DEST" ]] || [[ -e "$HIYORI_DEST" ]]; then
   rm -rf "$HIYORI_DEST"
 fi
 
-ln -s "$HIYORI_SRC" "$HIYORI_DEST"
-green "    软链完成：$HIYORI_DEST -> $HIYORI_SRC"
+cp -R "$HIYORI_SRC" "$HIYORI_DEST"
+green "    拷贝完成：$HIYORI_SRC -> $HIYORI_DEST"
 
 echo
 green "✅  Live2D 资源就位"

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, globalShortcut, screen, safeStorage, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, globalShortcut, screen, dialog } from 'electron'
 import { basename } from 'node:path'
 import { writeFile } from 'node:fs/promises'
 import { createPetWindow } from './window'
@@ -526,7 +526,8 @@ app.whenReady().then(async () => {
   // ---------- 配置 ----------
   ipcMain.handle('config:get-status', () => ({
     hasKey: Boolean(cachedApiKey),
-    encryptionAvailable: safeStorage.isEncryptionAvailable()
+    // API Key 现在落本地文件持久化（不再依赖 Keychain），始终可持久保存
+    encryptionAvailable: true
   }))
 
   ipcMain.handle('config:set-api-key', async (_, key: unknown) => {

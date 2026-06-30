@@ -23,7 +23,8 @@
 import * as PIXI from 'pixi.js'
 import { bootstrapLive2D } from './bootstrap'
 
-const HIYORI_MODEL_PATH = '/live2d/hiyori/hiyori_pro_t11.model3.json'
+// 用 BASE_URL 拼相对路径：dev（base=/）→ /live2d/...，打包（base=./，file://）→ ./live2d/...
+const HIYORI_MODEL_PATH = `${import.meta.env.BASE_URL}live2d/hiyori/hiyori_pro_t11.model3.json`
 
 const DEBUG_BG = false
 

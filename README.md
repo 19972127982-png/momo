@@ -39,13 +39,18 @@ stateDiagram-v2
 ```
 桌宠/
 ├── apps/
+│   ├── web/                           作品集网站（Next.js 16 + TS + Tailwind v4，部署 Vercel）
+│   │   ├── src/app/                   页面 + /api/chat 陪聊代理（持密钥 / IP 限流 / 仅陪伴）
+│   │   ├── src/components/            PetWidget（右下角小桃）+ Live2DStage（Web 端 Hiyori）
+│   │   ├── src/lib/                   useChat（工具意图短路引导下载）+ 限流 + 陪伴 prompt
+│   │   └── public/cubism · live2d/    Live2D 资产（随仓库提交，供 Vercel 构建）
 │   └── desktop/                       Electron 桌宠主程序（electron-vite + React + TS）
 │       ├── src/
 │       │   ├── main/
-│       │   │   ├── index.ts           IPC 注册 + 拖动 + 单例锁 + safeStorage 启动加载
+│       │   │   ├── index.ts           IPC 注册 + 拖动 + 单例锁 + API Key 启动加载
 │       │   │   ├── window.ts          460×760 透明置顶窗口
 │       │   │   ├── llm.ts             DeepSeek SSE 流式 + AbortController + 60s 超时
-│       │   │   ├── configStore.ts     safeStorage API Key 加密 + settings.json 原子写
+│       │   │   ├── configStore.ts     API Key 本地文件存储 + settings.json 原子写
 │       │   │   └── personality.ts     性格三维 snapshot（W2 mock，W3 接演化引擎）
 │       │   ├── shared/
 │       │   │   └── ipcTypes.ts        main / preload / renderer 共享类型
@@ -58,16 +63,20 @@ stateDiagram-v2
 │       │           ├── components/    PetCanvas / ChatBubble / ChatInput / ConfigDialog
 │       │           ├── App.tsx        useMachine + 接全部 IPC + click vs drag
 │       │           └── main.tsx
+│       ├── build/                     打包资源：icon.icns / icon.ico / icon.png（白底粉色线条桃子）
+│       ├── electron-builder.yml       打包配置（appId=com.echopet.desktop / productName=EchoPet）
 │       └── public/
 │           ├── cubism/                Cubism Core (gitignored, setup 脚本下载)
-│           └── live2d/hiyori/         Hiyori PRO 模型 (gitignored, 软链)
+│           └── live2d/hiyori/         Hiyori PRO 模型 (gitignored, setup 脚本拷贝)
 ├── packages/
+│   ├── agent-core/                    意图路由 + Agent 族 + Skills（@echopet/agent-core）
+│   ├── mcp-host/                      MCP host：stdio / 进程内 local server（@echopet/mcp-host）
 │   └── state-machine/                 XState v5 状态机包（@echopet/state-machine）
 │       ├── src/                       machine.ts / types.ts / index.ts
 │       └── test/                      vitest 23 用例
-├── docs/                              PRD / 架构 / W1 / W2 / 状态机设计
+├── docs/                              PRD / 架构 / W1~W4 / 状态机设计
 ├── scripts/
-│   └── setup-cubism-core.sh           一键拉取 Cubism Core + 软链 Hiyori
+│   └── setup-cubism-core.sh           一键拉取 Cubism Core + 拷贝 Hiyori
 ├── pnpm-workspace.yaml
 └── package.json                       workspace root
 ```
@@ -109,9 +118,11 @@ pnpm setup:cubism
 这个脚本会：
 
 1. 从 Live2D 官方 CDN `cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js` 下载 Cubism Core 到 `apps/desktop/public/cubism/`。
-2. 把 `hiyori_en/hiyori_pro/runtime/` 软链到 `apps/desktop/public/live2d/hiyori`。
+2. 把 `hiyori_en/hiyori_pro/runtime/` 拷贝到 `apps/desktop/public/live2d/hiyori`（拷成实体文件，保证打包产物自带模型）。
 
 两项资源都已经在 `.gitignore` 里，不会进 git。
+
+> 打包时无需手动执行：`pnpm build` / `build:mac` / `build:linux` 已在前面自动跑一遍资产准备（`setup:assets` → `setup-cubism-core.sh`），产物自带 Cubism Core + Hiyori 模型。
 
 ### 3. 启动 dev
 
@@ -128,7 +139,7 @@ pnpm dev
 
 启动后会自动弹出设置面板，前往 [platform.deepseek.com](https://platform.deepseek.com) 申请一个 `sk-...` key，填入保存即可。
 
-- API Key 通过 Electron `safeStorage` 加密落盘到 macOS Keychain
+- API Key 以 base64 轻混淆 + `0600` 权限存在 `userData/apikey.dat`（仅本机当前用户可读，不上传）。早期版本用 `safeStorage`/Keychain，但未签名分发会导致每次启动弹钥匙串密码，故改为本地文件
 - 桌宠名字 / 称呼存在 `~/Library/Application Support/echopet-desktop/settings.json`（明文，原子写）
 - 性格三维进度条目前是 W2 mock，W3 会接真实演化数据
 
@@ -182,11 +193,31 @@ onlyBuiltDependencies:
 
 ```bash
 pnpm dev                                       # 起 dev server + Electron
-pnpm build                                     # typecheck + 构建到 out/
+pnpm build                                     # setup:assets + typecheck + 构建到 out/
 pnpm -r typecheck                              # 全 workspace 静态类型检查
 pnpm --filter @echopet/state-machine test      # 状态机 23 单测
-pnpm setup:cubism                              # 重新拉 Cubism Core + 软链 Hiyori
+pnpm setup:cubism                              # 重新拉 Cubism Core + 拷贝 Hiyori
 ```
+
+---
+
+## 构建 & 分发
+
+```bash
+pnpm --filter @echopet/desktop build:mac       # macOS .dmg
+pnpm --filter @echopet/desktop build:win       # Windows 安装包
+pnpm --filter @echopet/desktop build:linux     # AppImage / snap / deb
+```
+
+打包面向「拿到就能用」做了几件事，普通用户无需任何开发环境：
+
+- **免 npx / 免装 Node**：文件管家用的 `@modelcontextprotocol/server-filesystem` 已作为依赖打进包，运行时用 Electron 自带的 Node（`ELECTRON_RUN_AS_NODE`）直接拉起，用户机器无需预装 Node/npx，也不联网下包。
+- **自带 Live2D 资产**：`build:*` 会先跑 `setup:assets`，把 Cubism Core + Hiyori 模型准备好再打包，产物自带模型。
+- **品牌信息**：`appId=com.echopet.desktop`、`productName=EchoPet`、图标走 `build/icon.{icns,ico,png}`（白底 + 粉色线条桃子）。
+
+> 当前为**未签名 / 未公证**构建。macOS 首次打开会被 Gatekeeper 拦，需在「系统设置 → 隐私与安全性」点击「仍要打开」，或对下载的 app 执行 `xattr -dr com.apple.quarantine /Applications/EchoPet.app`。
+>
+> 仍需联网的只有 **DeepSeek API**（聊天）：首次启动在设置面板填入 `sk-...` key 即可。
 
 ---
 

@@ -4,7 +4,8 @@
  * 关键约束：
  *   1. Cubism Core 必须在 pixi-live2d-display 模块代码执行前就挂到 window.Live2DCubismCore
  *   2. 不能 import — 它是 IIFE 形式的脚本，需要 <script src> 加载
- *   3. 走 vite public/ 下的 /cubism/live2dcubismcore.min.js，dev 和 prod 都能命中
+ *   3. 走 vite public/ 下的 cubism/live2dcubismcore.min.js；路径用 BASE_URL 拼，
+ *      dev（base=/）与打包（electron-vite base=./，file:// 加载）都能命中
  */
 
 declare global {
@@ -26,7 +27,7 @@ export function bootstrapLive2D(): Promise<void> {
     }
 
     const script = document.createElement('script')
-    script.src = '/cubism/live2dcubismcore.min.js'
+    script.src = `${import.meta.env.BASE_URL}cubism/live2dcubismcore.min.js`
     script.async = false
     script.onload = () => {
       if (window.Live2DCubismCore) {
@@ -38,7 +39,7 @@ export function bootstrapLive2D(): Promise<void> {
     script.onerror = () =>
       reject(
         new Error(
-          'Cubism Core 加载失败：检查 apps/desktop/public/cubism/live2dcubismcore.min.js 是否存在 ( 跑 pnpm setup:cubism )'
+          `Cubism Core 加载失败：${script.src} 加载不到（dev 跑 pnpm setup:cubism；打包检查 public/cubism 是否进包）`
         )
       )
     document.head.appendChild(script)

@@ -1,0 +1,14 @@
+# Netlify 部署配置（仅部署 apps/web 这个 Next.js 站点）
+# 站点根目录设为 apps/web；Netlify 会自动识别 Next.js 并启用 Next Runtime，
+# 把 /api/chat 这类 Route Handler 部署成 Netlify Function。
+
+[build]
+  base = "apps/web"
+  command = "pnpm build"
+  # 不要手动设置 publish：Next Runtime 会自动接管 .next 产物。
+
+[build.environment]
+  # Next 15 推荐 Node 20/22；用 22 稳定且受支持
+  NODE_VERSION = "22"
+  # 仓库里还有 desktop 包依赖 electron，构建网站时无需下载其二进制，跳过以提速并避免失败
+  ELECTRON_SKIP_BINARY_DOWNLOAD = "1"

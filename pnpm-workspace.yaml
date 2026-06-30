@@ -9,6 +9,8 @@ allowBuilds:
   electron: true
   electron-winstaller: true
   esbuild: true
+  # Next.js 图片优化用 sharp（@echopet/web）
+  sharp: true
   # tesseract.js 唯一的 build 脚本是 opencollective 捐赠横幅，无需运行
   tesseract.js: false
 
@@ -17,3 +19,4 @@ onlyBuiltDependencies:
   - electron
   - electron-winstaller
   - esbuild
+  - sharp
