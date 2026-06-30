@@ -13,8 +13,6 @@
   # 仓库里还有 desktop 包依赖 electron，构建网站时无需下载其二进制，跳过以提速并避免失败
   ELECTRON_SKIP_BINARY_DOWNLOAD = "1"
 
-# 显式声明 Next.js 运行时插件，强制其介入：
-# 生成 Route Handler（/api/chat）对应的函数，并把 App Router 路由接好。
-# 仅自动探测在某些 monorepo / 新版本下可能不触发，这里写死更稳。
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
+# 不手动声明 @netlify/plugin-nextjs：让 Netlify 自动探测 Next.js 并注入 OpenNext 适配器，
+# 自动注入会正确处理 monorepo 的包路径（base=apps/web → apps/web/.next）。
+# 同理不要设置 publish，显式 publish 会抑制自动注入、把站点当成纯静态目录发布。
