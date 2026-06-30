@@ -5,7 +5,9 @@
 [build]
   base = "apps/web"
   command = "pnpm build"
-  # 不要手动设置 publish：Next Runtime 会自动接管 .next 产物。
+  # 显式指定 .next（相对 base，即 apps/web/.next），覆盖 UI 里残留的错误发布目录。
+  # Next Runtime 会基于该目录生成函数与静态产物。
+  publish = ".next"
 
 [build.environment]
   # Next 15 推荐 Node 20/22；用 22 稳定且受支持
