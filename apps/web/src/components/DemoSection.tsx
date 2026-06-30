@@ -1,17 +1,20 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
  * Demo 区：按功能分模块展示录屏。
  *
- * 性能策略（避免一进页面就并发下载 ~48MB + 同时解码导致卡顿、并挤占 Live2D 的 GPU/带宽）：
- * - preload="none"：不进视口不下载
- * - IntersectionObserver：仅当卡片进入视口才 play()，离开即 pause()
- * - 静音循环，观感等同「自动循环播放」
+ * 加载策略：人物（Live2D）就绪后立即预加载全部视频（见 useEagerAfterPet），不再等进视口。
+ *
+ * 播放策略（关键）：由父组件统一协调"哪些卡片该播"。
+ * - 移动端：同一时刻只播「最可见」的 1 个，其余暂停显示首帧。
+ *   原因：移动端浏览器（尤其 iOS Safari）对同时解码的视频数有硬限制，
+ *   多个一起播会卡顿、且部分会停在首帧不动。
+ * - 桌面端：可见比例≥0.4 的都播（同时解码压力可接受）。
  *
  * 「创建提醒」内部由两段录屏组成（先设置、后到点通知），对外与单段卡片一致：
- * 进视口后自动连播 1→2 再循环，不暴露分段。
+ * 自动连播 1→2 再循环，不暴露分段。
  */
 
 interface DemoItem {
@@ -54,22 +57,16 @@ const DEMOS: DemoItem[] = [
   }
 ]
 
-/** 监听某元素是否进入视口（仅用于控制播放/暂停，不再用于控制加载） */
-function useInView<T extends Element>(): [React.RefObject<T | null>, boolean] {
-  const ref = useRef<T | null>(null)
-  const [inView, setInView] = useState(false)
+function useIsMobile(): boolean {
+  const [mobile, setMobile] = useState(false)
   useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    // 仅当卡片真正可见约一半时才播：避免多个视频同时解码（移动端尤其卡）
-    const io = new IntersectionObserver(
-      ([entry]) => setInView(entry.intersectionRatio >= 0.4),
-      { threshold: [0, 0.4, 0.6] }
-    )
-    io.observe(el)
-    return () => io.disconnect()
+    const mq = window.matchMedia('(max-width: 639px)')
+    const apply = (): void => setMobile(mq.matches)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
   }, [])
-  return [ref, inView]
+  return mobile
 }
 
 /**
@@ -85,7 +82,6 @@ function useEagerAfterPet(): boolean {
     }
     const on = (): void => setEager(true)
     window.addEventListener('echopet:pet-ready', on)
-    // 兜底：万一人物信号迟迟不来（异常），8s 后也开始预加载视频
     const t = window.setTimeout(() => setEager(true), 8000)
     return () => {
       window.removeEventListener('echopet:pet-ready', on)
@@ -110,15 +106,22 @@ function Spinner(): React.ReactElement {
   )
 }
 
-function AutoVideo({ src, eager }: { src: string; eager: boolean }): React.ReactElement {
-  const [ref, inView] = useInView<HTMLVideoElement>()
+function AutoVideo({
+  src,
+  eager,
+  play
+}: {
+  src: string
+  eager: boolean
+  play: boolean
+}): React.ReactElement {
+  const ref = useRef<HTMLVideoElement>(null)
   const [ready, setReady] = useState(false)
   const loadStarted = useRef(false)
 
   useEffect(() => {
     const v = ref.current
     if (!v) return
-    // 人物就绪后立即预加载（不等进视口）；只加载一次
     if (eager && !loadStarted.current) {
       loadStarted.current = true
       v.preload = 'auto'
@@ -128,13 +131,12 @@ function AutoVideo({ src, eager }: { src: string; eager: boolean }): React.React
         /* ignore */
       }
     }
-    // 播放/暂停仍按可见性控制，避免多个视频同时解码
-    if (inView && ready) {
+    if (play && ready) {
       v.play().catch(() => {})
-    } else if (!inView) {
+    } else if (!play) {
       v.pause()
     }
-  }, [inView, ready, eager, ref])
+  }, [play, ready, eager])
 
   return (
     <div className="relative h-full w-full">
@@ -149,14 +151,22 @@ function AutoVideo({ src, eager }: { src: string; eager: boolean }): React.React
         onCanPlay={() => setReady(true)}
         className="h-full w-full object-contain"
       />
-      {inView && !ready && <Spinner />}
+      {play && !ready && <Spinner />}
     </div>
   )
 }
 
-/** 多段连播：顺序播放并整体循环；播放按可见性控制 */
-function SeqVideo({ srcs, eager }: { srcs: string[]; eager: boolean }): React.ReactElement {
-  const [ref, inView] = useInView<HTMLVideoElement>()
+/** 多段连播：顺序播放并整体循环 */
+function SeqVideo({
+  srcs,
+  eager,
+  play
+}: {
+  srcs: string[]
+  eager: boolean
+  play: boolean
+}): React.ReactElement {
+  const ref = useRef<HTMLVideoElement>(null)
   const [idx, setIdx] = useState(0)
   const [ready, setReady] = useState(false)
   const loadedIdx = useRef(-1)
@@ -164,7 +174,7 @@ function SeqVideo({ srcs, eager }: { srcs: string[]; eager: boolean }): React.Re
   useEffect(() => {
     const v = ref.current
     if (!v) return
-    // 人物就绪后开始预加载；切到下一段时 src 变了也必须 load() 才能真正换源
+    // 换源（含初次/切段）：必须 load() 才能真正切到新 src
     if (eager && loadedIdx.current !== idx) {
       loadedIdx.current = idx
       v.preload = 'auto'
@@ -175,12 +185,12 @@ function SeqVideo({ srcs, eager }: { srcs: string[]; eager: boolean }): React.Re
       }
       return
     }
-    if (inView && ready) {
+    if (play && ready) {
       v.play().catch(() => {})
-    } else if (!inView) {
+    } else if (!play) {
       v.pause()
     }
-  }, [inView, ready, idx, eager, ref])
+  }, [play, ready, idx, eager])
 
   function onEnded(): void {
     setReady(false)
@@ -200,19 +210,45 @@ function SeqVideo({ srcs, eager }: { srcs: string[]; eager: boolean }): React.Re
         onEnded={onEnded}
         className="h-full w-full object-contain"
       />
-      {inView && !ready && <Spinner />}
+      {play && !ready && <Spinner />}
     </div>
   )
 }
 
-function VideoCard({ item, eager }: { item: DemoItem; eager: boolean }): React.ReactElement {
+function VideoCard({
+  item,
+  eager,
+  play,
+  onRatio
+}: {
+  item: DemoItem
+  eager: boolean
+  play: boolean
+  onRatio: (key: string, ratio: number) => void
+}): React.ReactElement {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      ([entry]) => onRatio(item.title, entry.intersectionRatio),
+      { threshold: [0, 0.2, 0.4, 0.6, 0.8, 1] }
+    )
+    io.observe(el)
+    return () => {
+      io.disconnect()
+      onRatio(item.title, 0)
+    }
+  }, [item.title, onRatio])
+
   return (
     <figure className="overflow-hidden rounded-3xl bg-white ring-1 ring-peach-100">
-      <div className="grid aspect-square place-items-center bg-peach-50">
+      <div ref={ref} className="grid aspect-square place-items-center bg-peach-50">
         {item.srcs ? (
-          <SeqVideo srcs={item.srcs} eager={eager} />
+          <SeqVideo srcs={item.srcs} eager={eager} play={play} />
         ) : (
-          <AutoVideo src={item.src!} eager={eager} />
+          <AutoVideo src={item.src!} eager={eager} play={play} />
         )}
       </div>
       <figcaption className="px-5 py-4">
@@ -223,8 +259,51 @@ function VideoCard({ item, eager }: { item: DemoItem; eager: boolean }): React.R
   )
 }
 
+function sameSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const s = new Set(a)
+  return b.every((x) => s.has(x))
+}
+
 export default function DemoSection(): React.ReactElement {
   const eager = useEagerAfterPet()
+  const isMobile = useIsMobile()
+  const ratios = useRef<Map<string, number>>(new Map())
+  const [playKeys, setPlayKeys] = useState<string[]>([])
+
+  const recompute = useCallback((): void => {
+    const entries = [...ratios.current.entries()]
+    let next: string[]
+    if (isMobile) {
+      // 只播最可见的一个（且需达到一定可见度）
+      let best: string | null = null
+      let bestR = 0.35
+      for (const [k, r] of entries) {
+        if (r >= bestR) {
+          best = k
+          bestR = r
+        }
+      }
+      next = best ? [best] : []
+    } else {
+      next = entries.filter(([, r]) => r >= 0.4).map(([k]) => k)
+    }
+    setPlayKeys((prev) => (sameSet(prev, next) ? prev : next))
+  }, [isMobile])
+
+  // 移动/桌面切换时重算
+  useEffect(() => {
+    recompute()
+  }, [recompute])
+
+  const onRatio = useCallback(
+    (key: string, ratio: number): void => {
+      ratios.current.set(key, ratio)
+      recompute()
+    },
+    [recompute]
+  )
+
   return (
     <section id="demo" className="px-6 py-20">
       <div className="mx-auto max-w-5xl">
@@ -240,7 +319,13 @@ export default function DemoSection(): React.ReactElement {
 
         <div className="mt-12 grid gap-5 sm:grid-cols-2">
           {DEMOS.map((d) => (
-            <VideoCard key={d.title} item={d} eager={eager} />
+            <VideoCard
+              key={d.title}
+              item={d}
+              eager={eager}
+              play={playKeys.includes(d.title)}
+              onRatio={onRatio}
+            />
           ))}
         </div>
       </div>
