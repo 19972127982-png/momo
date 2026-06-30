@@ -3,15 +3,19 @@
 import { useEffect, useRef, useState } from 'react'
 
 /**
- * Demo 区：按功能分模块展示录屏，所有视频自动静音循环播放。
- * 「创建提醒」内部由两段录屏组成（先设置、后到点通知），
- * 对外表现与其他单段卡片完全一致：自动连播 1→2 再循环，不暴露分段。
+ * Demo 区：按功能分模块展示录屏。
+ *
+ * 性能策略（避免一进页面就并发下载 ~48MB + 同时解码导致卡顿、并挤占 Live2D 的 GPU/带宽）：
+ * - preload="none"：不进视口不下载
+ * - IntersectionObserver：仅当卡片进入视口才 play()，离开即 pause()
+ * - 静音循环，观感等同「自动循环播放」
+ *
+ * 「创建提醒」内部由两段录屏组成（先设置、后到点通知），对外与单段卡片一致：
+ * 进视口后自动连播 1→2 再循环，不暴露分段。
  */
 
 interface DemoItem {
-  /** 单段视频 */
   src?: string
-  /** 多段视频，按顺序连播后循环 */
   srcs?: string[]
   title: string
   desc: string
@@ -50,32 +54,63 @@ const DEMOS: DemoItem[] = [
   }
 ]
 
+/** 监听某元素是否进入视口（带预加载余量） */
+function useInView<T extends Element>(): [React.RefObject<T | null>, boolean] {
+  const ref = useRef<T | null>(null)
+  const [inView, setInView] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { rootMargin: '200px 0px', threshold: 0.25 }
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  return [ref, inView]
+}
+
 function AutoVideo({ src }: { src: string }): React.ReactElement {
+  const [ref, inView] = useInView<HTMLVideoElement>()
+
+  useEffect(() => {
+    const v = ref.current
+    if (!v) return
+    if (inView) {
+      v.play().catch(() => {})
+    } else {
+      v.pause()
+    }
+  }, [inView, ref])
+
   return (
     <video
+      ref={ref}
       src={src}
-      autoPlay
       muted
       loop
       playsInline
-      preload="auto"
+      preload="none"
       className="h-full w-full object-contain"
     />
   )
 }
 
-/** 多段连播：播完一段自动切下一段，整体循环，对外无感 */
+/** 多段连播：进视口后顺序播放并整体循环；离开视口暂停 */
 function SeqVideo({ srcs }: { srcs: string[] }): React.ReactElement {
-  const ref = useRef<HTMLVideoElement>(null)
+  const [ref, inView] = useInView<HTMLVideoElement>()
   const [idx, setIdx] = useState(0)
 
   useEffect(() => {
     const v = ref.current
-    if (v) {
-      v.load()
+    if (!v) return
+    if (inView) {
       v.play().catch(() => {})
+    } else {
+      v.pause()
     }
-  }, [idx])
+  }, [inView, idx, ref])
 
   function onEnded(): void {
     setIdx((i) => (i + 1) % srcs.length)
@@ -85,10 +120,9 @@ function SeqVideo({ srcs }: { srcs: string[] }): React.ReactElement {
     <video
       ref={ref}
       src={srcs[idx]}
-      autoPlay
       muted
       playsInline
-      preload="auto"
+      preload="none"
       onEnded={onEnded}
       className="h-full w-full object-contain"
     />
