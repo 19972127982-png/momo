@@ -61,9 +61,10 @@ function useInView<T extends Element>(): [React.RefObject<T | null>, boolean] {
   useEffect(() => {
     const el = ref.current
     if (!el) return
+    // 仅当卡片真正可见约一半时才播：避免快速滚动时多个视频同时解码（移动端尤其卡）
     const io = new IntersectionObserver(
-      ([entry]) => setInView(entry.isIntersecting),
-      { rootMargin: '200px 0px', threshold: 0.25 }
+      ([entry]) => setInView(entry.intersectionRatio >= 0.4),
+      { threshold: [0, 0.4, 0.6] }
     )
     io.observe(el)
     return () => io.disconnect()
