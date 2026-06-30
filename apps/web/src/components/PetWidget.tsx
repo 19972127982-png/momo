@@ -50,8 +50,8 @@ export default function PetWidget(): React.ReactElement {
   }
 
   return (
-    <div className="fixed right-2 top-1/2 z-50 flex -translate-y-1/2 flex-col items-end gap-2 sm:right-4">
-      {/* 气泡：EchoPet 的回复，靠右、在人物头顶上方；常驻挂载，靠 opacity 淡入淡出 */}
+    <div className="relative z-40 flex w-full flex-col items-center gap-2 pt-2 sm:fixed sm:right-4 sm:top-1/2 sm:z-50 sm:w-auto sm:-translate-y-1/2 sm:items-end sm:pt-0">
+      {/* 气泡：EchoPet 的回复；移动端居中、桌面端靠右，在人物头顶上方；常驻挂载，靠 opacity 淡入淡出 */}
       {(lastAssistant || showDots) && (
         <div
           role="status"
@@ -92,7 +92,7 @@ export default function PetWidget(): React.ReactElement {
       <button
         onClick={() => setInputOpen((o) => !o)}
         aria-label={inputOpen ? '收起输入框' : '和 EchoPet 聊聊'}
-        className="relative block h-[32rem] max-h-[78vh] w-[19rem] cursor-pointer sm:w-[23rem]"
+        className="relative block h-64 w-48 cursor-pointer sm:h-[32rem] sm:max-h-[78vh] sm:w-[23rem]"
       >
         {/* 静态立绘：一进页面就秒显；Live2D 就绪后淡出；出错则保留作为兜底 */}
         {/* eslint-disable-next-line @next/next/no-img-element */}

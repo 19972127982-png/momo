@@ -30,13 +30,18 @@ const FEATURES = [
 
 export default function Home(): React.ReactElement {
   return (
-    <main className="overflow-hidden">
+    <main className="relative overflow-hidden">
+      {/* 顶部渐变：提升到 main 顶层，覆盖移动端置顶的人物区域，避免留白 */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[34rem] bg-gradient-to-b from-peach-100 via-peach-50 to-transparent"
+      />
+
+      {/* 桌宠：移动端在文档流顶部（随滚动），桌面端右侧悬浮固定 */}
+      <PetWidget />
+
       {/* ---------------- Hero ---------------- */}
       <section className="relative px-6 pb-20 pt-24 sm:pt-32">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[28rem] bg-gradient-to-b from-peach-100 via-peach-50 to-transparent"
-        />
         <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
           <span className="animate-fade-up mb-5 rounded-full bg-white px-4 py-1.5 text-xs font-semibold tracking-wide text-peach-600 shadow-sm ring-1 ring-peach-100">
             桌面陪伴 · 会聊天也会动手
@@ -104,14 +109,14 @@ export default function Home(): React.ReactElement {
       {/* ---------------- 性格自适应（核心卖点） ---------------- */}
       <PersonalityShowcase />
 
+      {/* ---------------- Demo（实机演示，放在架构之前） ---------------- */}
+      <DemoSection />
+
       {/* ---------------- 架构图 ---------------- */}
       <ArchitectureDiagram />
 
       {/* ---------------- 技术栈 ---------------- */}
       <TechStack />
-
-      {/* ---------------- Demo ---------------- */}
-      <DemoSection />
 
       {/* ---------------- 下载 ---------------- */}
       <section id="download" className="px-6 py-20">
@@ -179,8 +184,6 @@ export default function Home(): React.ReactElement {
           <p className="text-xs text-ink-soft/70">为想要一点陪伴的人而做</p>
         </div>
       </footer>
-
-      <PetWidget />
     </main>
   )
 }
