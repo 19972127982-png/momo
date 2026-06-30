@@ -5,12 +5,16 @@
 [build]
   base = "apps/web"
   command = "pnpm build"
-  # 显式指定 .next（相对 base，即 apps/web/.next），覆盖 UI 里残留的错误发布目录。
-  # Next Runtime 会基于该目录生成函数与静态产物。
-  publish = ".next"
+  # 发布目录交给 Next Runtime 插件自动设置（不要手动写 .next，否则会被当成纯静态目录 → 404）。
 
 [build.environment]
-  # Next 15 推荐 Node 20/22；用 22 稳定且受支持
+  # Next 15/16 推荐 Node 20/22；用 22 稳定且受支持
   NODE_VERSION = "22"
   # 仓库里还有 desktop 包依赖 electron，构建网站时无需下载其二进制，跳过以提速并避免失败
   ELECTRON_SKIP_BINARY_DOWNLOAD = "1"
+
+# 显式声明 Next.js 运行时插件，强制其介入：
+# 生成 Route Handler（/api/chat）对应的函数，并把 App Router 路由接好。
+# 仅自动探测在某些 monorepo / 新版本下可能不触发，这里写死更稳。
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
