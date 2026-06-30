@@ -14,6 +14,7 @@ const REPLY_HIDE_MS = 5_000
 export default function PetWidget(): React.ReactElement {
   const [inputOpen, setInputOpen] = useState(false)
   const [stageError, setStageError] = useState(false)
+  const [live2dReady, setLive2dReady] = useState(false)
   const { messages, status, nudged, send } = useChat()
   const [draft, setDraft] = useState('')
 
@@ -91,19 +92,28 @@ export default function PetWidget(): React.ReactElement {
       <button
         onClick={() => setInputOpen((o) => !o)}
         aria-label={inputOpen ? '收起输入框' : '和 EchoPet 聊聊'}
-        className="block h-[32rem] max-h-[78vh] w-[19rem] cursor-pointer sm:w-[23rem]"
+        className="relative block h-[32rem] max-h-[78vh] w-[19rem] cursor-pointer sm:w-[23rem]"
       >
-        {stageError ? (
-          <span className="grid h-full w-full place-items-center">
-            <span className="grid h-24 w-24 place-items-center rounded-full bg-gradient-to-br from-peach-300 to-peach-500 text-5xl shadow-lg">
-              🍑
-            </span>
-          </span>
-        ) : (
+        {/* 静态立绘：一进页面就秒显；Live2D 就绪后淡出；出错则保留作为兜底 */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/live2d/hiyori-portrait.png"
+          alt="EchoPet"
+          aria-hidden
+          draggable={false}
+          className={`pointer-events-none absolute inset-0 h-full w-full object-contain object-bottom transition-opacity duration-700 ${
+            live2dReady ? 'opacity-0' : 'opacity-100'
+          }`}
+        />
+        {/* 动态 Live2D：就绪后淡入覆盖立绘 */}
+        {!stageError && (
           <Live2DStage
             speaking={status === 'streaming'}
+            onReady={() => setLive2dReady(true)}
             onError={() => setStageError(true)}
-            className="h-full w-full"
+            className={`absolute inset-0 h-full w-full transition-opacity duration-700 ${
+              live2dReady ? 'opacity-100' : 'opacity-0'
+            }`}
           />
         )}
       </button>

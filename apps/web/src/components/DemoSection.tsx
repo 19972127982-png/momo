@@ -108,10 +108,16 @@ function AutoVideo({ src }: { src: string }): React.ReactElement {
 function SeqVideo({ srcs }: { srcs: string[] }): React.ReactElement {
   const [ref, inView] = useInView<HTMLVideoElement>()
   const [idx, setIdx] = useState(0)
+  const loadedIdx = useRef(-1)
 
   useEffect(() => {
     const v = ref.current
     if (!v) return
+    // 切到下一段时 src 变了：必须 load() 让 <video> 真正换源，否则连播会卡在上一段
+    if (loadedIdx.current !== idx) {
+      loadedIdx.current = idx
+      v.load()
+    }
     if (inView) {
       v.play().catch(() => {})
     } else {
