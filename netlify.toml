@@ -5,7 +5,11 @@
 [build]
   base = "apps/web"
   command = "pnpm build"
-  # 发布目录交给 Next Runtime 插件自动设置（不要手动写 .next，否则会被当成纯静态目录 → 404）。
+  # monorepo 标准写法：publish 相对 base（= apps/web/.next）。
+  # 必须与下面显式声明的插件「一起」用：
+  #   - 只写 publish 不写插件 → 被当纯静态目录发布 → 404
+  #   - 只写插件不写 publish → 适配器在 base 目录找不到 .next → onBuild 失败
+  publish = ".next"
 
 [build.environment]
   # Next 15/16 推荐 Node 20/22；用 22 稳定且受支持
@@ -13,6 +17,7 @@
   # 仓库里还有 desktop 包依赖 electron，构建网站时无需下载其二进制，跳过以提速并避免失败
   ELECTRON_SKIP_BINARY_DOWNLOAD = "1"
 
-# 不手动声明 @netlify/plugin-nextjs：让 Netlify 自动探测 Next.js 并注入 OpenNext 适配器，
-# 自动注入会正确处理 monorepo 的包路径（base=apps/web → apps/web/.next）。
-# 同理不要设置 publish，显式 publish 会抑制自动注入、把站点当成纯静态目录发布。
+# 显式声明运行时插件：让它读取 apps/web/.next，生成 SSR/Route Handler 函数与路由重写，
+# 避免 monorepo 下自动注入不触发（否则站点只会被当静态目录 → 404）。
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
