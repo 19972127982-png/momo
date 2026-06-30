@@ -54,14 +54,14 @@ const DEMOS: DemoItem[] = [
   }
 ]
 
-/** 监听某元素是否进入视口（带预加载余量） */
+/** 监听某元素是否进入视口（仅用于控制播放/暂停，不再用于控制加载） */
 function useInView<T extends Element>(): [React.RefObject<T | null>, boolean] {
   const ref = useRef<T | null>(null)
   const [inView, setInView] = useState(false)
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    // 仅当卡片真正可见约一半时才播：避免快速滚动时多个视频同时解码（移动端尤其卡）
+    // 仅当卡片真正可见约一半时才播：避免多个视频同时解码（移动端尤其卡）
     const io = new IntersectionObserver(
       ([entry]) => setInView(entry.intersectionRatio >= 0.4),
       { threshold: [0, 0.4, 0.6] }
@@ -70,6 +70,29 @@ function useInView<T extends Element>(): [React.RefObject<T | null>, boolean] {
     return () => io.disconnect()
   }, [])
   return [ref, inView]
+}
+
+/**
+ * 是否可以开始预加载视频：人物（Live2D）就绪后才开始，避免和人物抢带宽。
+ * 监听 PetWidget 广播的 'echopet:pet-ready'；若已就绪则立即开始；并带安全兜底。
+ */
+function useEagerAfterPet(): boolean {
+  const [eager, setEager] = useState(false)
+  useEffect(() => {
+    if ((window as unknown as { __echopetPetReady?: boolean }).__echopetPetReady) {
+      setEager(true)
+      return
+    }
+    const on = (): void => setEager(true)
+    window.addEventListener('echopet:pet-ready', on)
+    // 兜底：万一人物信号迟迟不来（异常），8s 后也开始预加载视频
+    const t = window.setTimeout(() => setEager(true), 8000)
+    return () => {
+      window.removeEventListener('echopet:pet-ready', on)
+      window.clearTimeout(t)
+    }
+  }, [])
+  return eager
 }
 
 /** /demo/foo.mp4 → /demo/posters/foo.jpg（首帧占位，秒显） */
@@ -87,29 +110,31 @@ function Spinner(): React.ReactElement {
   )
 }
 
-function AutoVideo({ src }: { src: string }): React.ReactElement {
+function AutoVideo({ src, eager }: { src: string; eager: boolean }): React.ReactElement {
   const [ref, inView] = useInView<HTMLVideoElement>()
   const [ready, setReady] = useState(false)
+  const loadStarted = useRef(false)
 
   useEffect(() => {
     const v = ref.current
     if (!v) return
-    if (inView) {
-      if (ready) {
-        v.play().catch(() => {})
-      } else {
-        // 进视口先缓冲，canplay 后再播（见 onCanPlay）
-        v.preload = 'auto'
-        try {
-          v.load()
-        } catch {
-          /* ignore */
-        }
+    // 人物就绪后立即预加载（不等进视口）；只加载一次
+    if (eager && !loadStarted.current) {
+      loadStarted.current = true
+      v.preload = 'auto'
+      try {
+        v.load()
+      } catch {
+        /* ignore */
       }
-    } else {
+    }
+    // 播放/暂停仍按可见性控制，避免多个视频同时解码
+    if (inView && ready) {
+      v.play().catch(() => {})
+    } else if (!inView) {
       v.pause()
     }
-  }, [inView, ready, ref])
+  }, [inView, ready, eager, ref])
 
   return (
     <div className="relative h-full w-full">
@@ -129,8 +154,8 @@ function AutoVideo({ src }: { src: string }): React.ReactElement {
   )
 }
 
-/** 多段连播：进视口后顺序播放并整体循环；离开视口暂停 */
-function SeqVideo({ srcs }: { srcs: string[] }): React.ReactElement {
+/** 多段连播：顺序播放并整体循环；播放按可见性控制 */
+function SeqVideo({ srcs, eager }: { srcs: string[]; eager: boolean }): React.ReactElement {
   const [ref, inView] = useInView<HTMLVideoElement>()
   const [idx, setIdx] = useState(0)
   const [ready, setReady] = useState(false)
@@ -139,9 +164,8 @@ function SeqVideo({ srcs }: { srcs: string[] }): React.ReactElement {
   useEffect(() => {
     const v = ref.current
     if (!v) return
-    // 切到下一段时 src 变了：必须 load() 让 <video> 真正换源，否则连播会卡在上一段
-    // 仅在进入视口后才加载，保持懒加载
-    if (inView && loadedIdx.current !== idx) {
+    // 人物就绪后开始预加载；切到下一段时 src 变了也必须 load() 才能真正换源
+    if (eager && loadedIdx.current !== idx) {
       loadedIdx.current = idx
       v.preload = 'auto'
       try {
@@ -151,21 +175,12 @@ function SeqVideo({ srcs }: { srcs: string[] }): React.ReactElement {
       }
       return
     }
-    if (inView) {
-      if (ready) {
-        v.play().catch(() => {})
-      } else {
-        v.preload = 'auto'
-        try {
-          v.load()
-        } catch {
-          /* ignore */
-        }
-      }
-    } else {
+    if (inView && ready) {
+      v.play().catch(() => {})
+    } else if (!inView) {
       v.pause()
     }
-  }, [inView, ready, idx, ref])
+  }, [inView, ready, idx, eager, ref])
 
   function onEnded(): void {
     setReady(false)
@@ -190,11 +205,15 @@ function SeqVideo({ srcs }: { srcs: string[] }): React.ReactElement {
   )
 }
 
-function VideoCard({ item }: { item: DemoItem }): React.ReactElement {
+function VideoCard({ item, eager }: { item: DemoItem; eager: boolean }): React.ReactElement {
   return (
     <figure className="overflow-hidden rounded-3xl bg-white ring-1 ring-peach-100">
       <div className="grid aspect-square place-items-center bg-peach-50">
-        {item.srcs ? <SeqVideo srcs={item.srcs} /> : <AutoVideo src={item.src!} />}
+        {item.srcs ? (
+          <SeqVideo srcs={item.srcs} eager={eager} />
+        ) : (
+          <AutoVideo src={item.src!} eager={eager} />
+        )}
       </div>
       <figcaption className="px-5 py-4">
         <h3 className="text-base font-bold text-ink">{item.title}</h3>
@@ -205,6 +224,7 @@ function VideoCard({ item }: { item: DemoItem }): React.ReactElement {
 }
 
 export default function DemoSection(): React.ReactElement {
+  const eager = useEagerAfterPet()
   return (
     <section id="demo" className="px-6 py-20">
       <div className="mx-auto max-w-5xl">
@@ -220,7 +240,7 @@ export default function DemoSection(): React.ReactElement {
 
         <div className="mt-12 grid gap-5 sm:grid-cols-2">
           {DEMOS.map((d) => (
-            <VideoCard key={d.title} item={d} />
+            <VideoCard key={d.title} item={d} eager={eager} />
           ))}
         </div>
       </div>

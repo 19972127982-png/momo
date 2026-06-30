@@ -32,6 +32,13 @@ export default function PetWidget(): React.ReactElement {
 
   const showInput = isMobile || inputOpen
 
+  // 人物就绪（或加载失败）后，广播信号：让 Demo 区开始预加载视频（人物优先、视频随后）
+  useEffect(() => {
+    if (!live2dReady && !stageError) return
+    ;(window as unknown as { __echopetPetReady?: boolean }).__echopetPetReady = true
+    window.dispatchEvent(new Event('echopet:pet-ready'))
+  }, [live2dReady, stageError])
+
   // 桌面版交互：只显示 EchoPet 最近一句回复的气泡（用户输入在输入框里）
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
   const showDots = status === 'thinking' && (!lastAssistant || !lastAssistant.content)
