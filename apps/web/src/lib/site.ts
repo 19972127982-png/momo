@@ -9,7 +9,9 @@ export const SITE = {
   url: 'https://echopet.app',
   github: 'https://github.com/19972127982-png/momo',
   releasesLatest: 'https://github.com/19972127982-png/momo/releases/latest',
-  // 直链下载（暂指向 releases 页；有正式产物后可换成具体资产 URL）
-  downloadMac: 'https://github.com/19972127982-png/momo/releases/latest',
+  // macOS（Apple Silicon）直链 dmg；升级版本后同步改这里的文件名
+  downloadMac:
+    'https://github.com/19972127982-png/momo/releases/download/v0.1.0/EchoPet-0.1.0.dmg',
+  // 暂无 Windows 产物，先落到 releases 页
   downloadWin: 'https://github.com/19972127982-png/momo/releases/latest'
 } as const
